@@ -52,7 +52,7 @@ services:
   coder:
     image: ghcr.io/coder/coder:latest
     ports:
-      - "${CODER_PORT}:7080"
+      - "127.0.0.1:${CODER_PORT}:7080"
     environment:
       CODER_PG_CONNECTION_URL: "postgresql://coder:${POSTGRES_PASSWORD}@database:${POSTGRES_PORT}/coder?sslmode=disable"
       CODER_HTTP_ADDRESS: "0.0.0.0:7080"
@@ -145,6 +145,25 @@ services:
         coder templates push "$$TEMPLATE_NAME" --directory . --yes \
           && echo "Template '$$TEMPLATE_NAME' created successfully." \
           || echo "Template creation skipped (may already exist)."
+
+        # Set default auto-stop (TTL) to 1 hour (3600000 ms)
+        echo "Setting auto-stop to 1 hour..."
+
+        # Get template ID by name (via organization endpoint)
+        TEMPLATE_ID=$$(curl -s "http://coder:7080/api/v2/organizations/default/templates/$$TEMPLATE_NAME" \
+          -H "Coder-Session-Token: $$SESSION_TOKEN" \
+          | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+
+        if [ -n "$$TEMPLATE_ID" ]; then
+          curl -s -X PATCH "http://coder:7080/api/v2/templates/$$TEMPLATE_ID" \
+            -H "Content-Type: application/json" \
+            -H "Coder-Session-Token: $$SESSION_TOKEN" \
+            -d '{"default_ttl_ms": 3600000, "activity_bump_ms": 3600000}' \
+            && echo "Auto-stop configured: 1 hour inactivity timeout." \
+            || echo "Failed to set auto-stop."
+        else
+          echo "Could not find template ID, skipping auto-stop configuration."
+        fi
 
         exit 0
     environment:
