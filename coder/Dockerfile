@@ -31,12 +31,41 @@ FROM ghcr.io/coder/code-server:latest
 
 USER root
 
-# Install Python and common development tools
+# Install build dependencies for Python
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
+    build-essential \
+    libssl-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libncursesw5-dev \
+    libxml2-dev \
+    libxmlsec1-dev \
+    libffi-dev \
+    liblzma-dev \
+    wget \
+    curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Python 3.13 from source
+ARG PYTHON_VERSION=3.13.1
+RUN cd /tmp \
+    && wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz \
+    && tar -xzf Python-${PYTHON_VERSION}.tgz \
+    && cd Python-${PYTHON_VERSION} \
+    && ./configure --enable-optimizations --with-ensurepip=install \
+    && make -j$(nproc) \
+    && make altinstall \
+    && cd / \
+    && rm -rf /tmp/Python-${PYTHON_VERSION}*
+
+# Create symlinks for python3 and pip3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.13 1 \
+    && update-alternatives --install /usr/bin/pip3 pip3 /usr/local/bin/pip3.13 1 \
+    && ln -sf /usr/local/bin/python3.13 /usr/bin/python \
+    && ln -sf /usr/local/bin/pip3.13 /usr/bin/pip
 
 # Prepare extensions directory
 RUN mkdir -p /opt/code-server/extensions \
