@@ -191,6 +191,7 @@ docker compose up -d
 | `setup-admin.sh` | Standalone admin user creation |
 | `create-user.sh` | Create user + workspace via API |
 | `docker-compose.yml` | Docker Compose configuration |
+| `nginx-coder.conf` | Nginx config to restrict workspace creation |
 | `main.tf` | Terraform template for workspaces |
 | `Dockerfile` | Workspace image with computor extension |
 
@@ -277,3 +278,131 @@ All services run on a shared `coder-network` bridge network. Workspace container
 ### Image Registry
 
 The local registry (`localhost:5000`) stores pre-built workspace images. This avoids rebuilding images for each workspace, making startup much faster.
+
+## Restricting Workspace Creation
+
+By default, any logged-in user can create workspaces. To restrict this to admin/backend only, use the provided nginx configuration.
+
+### Setup
+
+1. Copy `nginx-coder.conf` to your nginx config directory
+2. Edit the file and replace:
+   - `YOUR_SECRET_HERE` with a secure random string (e.g., `openssl rand -hex 32`)
+   - `YOUR_DOMAIN` with your Coder domain
+   - SSL certificate paths if needed
+   - Backend port if different from 7080
+
+3. Enable the config:
+   ```bash
+   cp nginx-coder.conf /etc/nginx/sites-available/coder
+   ln -s /etc/nginx/sites-available/coder /etc/nginx/sites-enabled/
+   nginx -t && systemctl reload nginx
+   ```
+
+### How It Works
+
+The nginx config blocks these API endpoints unless the `X-Admin-Secret` header is present:
+- `POST /api/v2/users` - User creation
+- `POST /api/v2/organizations/{org}/members/{user}/workspaces` - Workspace creation
+
+Users can still:
+- Log in and use existing workspaces
+- Start/stop their workspaces
+- Access all other Coder features
+
+### FastAPI Integration
+
+Create users and workspaces from your backend:
+
+```python
+import httpx
+
+CODER_URL = "https://coder.example.com"
+ADMIN_SECRET = "your-secret-here"
+ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = "admin-password"
+
+async def get_admin_token() -> str:
+    """Get admin session token."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{CODER_URL}/api/v2/users/login",
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
+        )
+        return resp.json()["session_token"]
+
+async def create_user(username: str, email: str, password: str, full_name: str = None):
+    """Create a new Coder user."""
+    token = await get_admin_token()
+
+    # Get organization ID
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{CODER_URL}/api/v2/organizations",
+            headers={"Coder-Session-Token": token}
+        )
+        org_id = resp.json()[0]["id"]
+
+    # Create user
+    user_data = {
+        "username": username,
+        "email": email,
+        "password": password,
+        "user_status": "active",
+        "organization_ids": [org_id]
+    }
+    if full_name:
+        user_data["name"] = full_name
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{CODER_URL}/api/v2/users",
+            headers={
+                "Coder-Session-Token": token,
+                "X-Admin-Secret": ADMIN_SECRET  # Required by nginx
+            },
+            json=user_data
+        )
+        return resp.json()
+
+async def create_workspace(username: str, workspace_name: str, template_name: str = "docker-workspace"):
+    """Create a workspace for a user."""
+    token = await get_admin_token()
+
+    # Get template ID
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{CODER_URL}/api/v2/organizations/default/templates/{template_name}",
+            headers={"Coder-Session-Token": token}
+        )
+        template_id = resp.json()["id"]
+
+    # Create workspace
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{CODER_URL}/api/v2/organizations/default/members/{username}/workspaces",
+            headers={
+                "Coder-Session-Token": token,
+                "X-Admin-Secret": ADMIN_SECRET  # Required by nginx
+            },
+            json={
+                "name": workspace_name,
+                "template_id": template_id
+            }
+        )
+        return resp.json()
+
+# Usage
+async def provision_student(username: str, email: str, password: str, full_name: str):
+    """Provision a complete student environment."""
+    user = await create_user(username, email, password, full_name)
+    workspace = await create_workspace(username, f"{username}-workspace")
+    return {"user": user, "workspace": workspace}
+```
+
+### Security Notes
+
+- The `X-Admin-Secret` header is only checked by nginx, not by Coder itself
+- Keep the secret secure - anyone with it can create users/workspaces
+- The secret should match between nginx config and your backend
+- Coder session tokens are still required for authentication
