@@ -1,4 +1,33 @@
 services:
+  # Traefik reverse proxy with workspace creation protection
+  traefik:
+    image: traefik:v3.0
+    ports:
+      - "${CODER_PORT}:80"
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - coder-network
+    depends_on:
+      coder:
+        condition: service_healthy
+
+  # Blocked response service (returns 403 for unauthorized requests)
+  blocked-response:
+    image: nginx:alpine
+    volumes:
+      - ./blocked.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - coder-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.blocked.loadbalancer.server.port=80"
+
   # Local Docker registry for workspace images
   registry:
     image: registry:2
@@ -51,8 +80,9 @@ services:
 
   coder:
     image: ghcr.io/coder/coder:latest
-    ports:
-      - "127.0.0.1:${CODER_PORT}:7080"
+    # No external ports - Traefik handles routing
+    expose:
+      - "7080"
     environment:
       CODER_PG_CONNECTION_URL: "postgresql://coder:${POSTGRES_PASSWORD}@database:${POSTGRES_PORT}/coder?sslmode=disable"
       CODER_HTTP_ADDRESS: "0.0.0.0:7080"
@@ -75,6 +105,53 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
+    labels:
+      - "traefik.enable=true"
+
+      # ===========================================
+      # PROTECTED: User creation (POST /api/v2/users exactly)
+      # ===========================================
+
+      # ALLOW: With valid X-Admin-Secret header (priority 110)
+      - "traefik.http.routers.coder-users-allow.rule=Path(`/api/v2/users`) && Header(`X-Admin-Secret`, `${ADMIN_API_SECRET}`)"
+      - "traefik.http.routers.coder-users-allow.priority=110"
+      - "traefik.http.routers.coder-users-allow.entrypoints=web"
+      - "traefik.http.routers.coder-users-allow.service=coder"
+
+      # BLOCK: POST without header (priority 105)
+      - "traefik.http.routers.coder-users-block.rule=Path(`/api/v2/users`) && Method(`POST`)"
+      - "traefik.http.routers.coder-users-block.priority=105"
+      - "traefik.http.routers.coder-users-block.entrypoints=web"
+      - "traefik.http.routers.coder-users-block.service=blocked"
+
+      # ===========================================
+      # PROTECTED: Workspace creation (POST /api/v2/organizations/.../workspaces)
+      # ===========================================
+
+      # ALLOW: With valid X-Admin-Secret header (priority 110)
+      - "traefik.http.routers.coder-workspace-allow.rule=PathRegexp(`^/api/v2/organizations/[^/]+/members/[^/]+/workspaces`) && Header(`X-Admin-Secret`, `${ADMIN_API_SECRET}`)"
+      - "traefik.http.routers.coder-workspace-allow.priority=110"
+      - "traefik.http.routers.coder-workspace-allow.entrypoints=web"
+      - "traefik.http.routers.coder-workspace-allow.service=coder"
+
+      # BLOCK: POST without header (priority 105)
+      - "traefik.http.routers.coder-workspace-block.rule=PathRegexp(`^/api/v2/organizations/[^/]+/members/[^/]+/workspaces`) && Method(`POST`)"
+      - "traefik.http.routers.coder-workspace-block.priority=105"
+      - "traefik.http.routers.coder-workspace-block.entrypoints=web"
+      - "traefik.http.routers.coder-workspace-block.service=blocked"
+
+      # ===========================================
+      # DEFAULT: All other routes (priority 1)
+      # ===========================================
+      - "traefik.http.routers.coder.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.coder.priority=1"
+      - "traefik.http.routers.coder.entrypoints=web"
+      - "traefik.http.routers.coder.service=coder"
+
+      # ===========================================
+      # SERVICE
+      # ===========================================
+      - "traefik.http.services.coder.loadbalancer.server.port=7080"
 
   # Post-start container: creates admin user after Coder is healthy
   coder-admin-setup:

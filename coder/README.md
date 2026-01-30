@@ -135,6 +135,8 @@ Re-running `docker compose up -d` is safe (idempotent).
 
 | Service | Description |
 |---------|-------------|
+| `traefik` | Reverse proxy with workspace creation protection |
+| `blocked-response` | Returns 403 for blocked API requests |
 | `registry` | Local Docker registry (port 5000) for workspace images |
 | `image-builder` | Builds and pushes workspace image to registry |
 | `coder` | Main Coder server |
@@ -190,8 +192,9 @@ docker compose up -d
 | `stop.sh` | Stop/cleanup script |
 | `setup-admin.sh` | Standalone admin user creation |
 | `create-user.sh` | Create user + workspace via API |
-| `docker-compose.yml` | Docker Compose configuration |
-| `nginx-coder.conf` | Nginx config to restrict workspace creation |
+| `docker-compose.yml` | Docker Compose with Traefik protection |
+| `blocked.conf` | Nginx config for 403 blocked response |
+| `nginx-coder.conf` | Standalone nginx config (alternative) |
 | `main.tf` | Terraform template for workspaces |
 | `Dockerfile` | Workspace image with computor extension |
 
@@ -256,23 +259,41 @@ Use `create-user.sh` to create users and their workspaces via the Coder API:
 
 ### Network
 
-All services run on a shared `coder-network` bridge network. Workspace containers created by Terraform also join this network, allowing agents to connect to the Coder server via `coder:7080` internally.
+All services run on a shared `coder-network` bridge network. Traefik handles external traffic and blocks unauthorized workspace/user creation.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     coder-network                           │
-│                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐ │
-│  │ registry │  │ database │  │  coder   │  │  workspace  │ │
-│  │  :5000   │  │  :5432   │  │  :7080   │◄─│  containers │ │
-│  └──────────┘  └──────────┘  └──────────┘  └─────────────┘ │
-│                                    │                        │
-└────────────────────────────────────┼────────────────────────┘
-                                     │
-                              ┌──────▼──────┐
+                              ┌─────────────┐
                               │  Host:PORT  │
                               │  (external) │
-                              └─────────────┘
+                              └──────┬──────┘
+                                     │
+┌────────────────────────────────────┼────────────────────────┐
+│                     coder-network  │                        │
+│                                    ▼                        │
+│                             ┌──────────┐                    │
+│                             │ traefik  │                    │
+│                             │  :80     │                    │
+│                             └────┬─────┘                    │
+│                                  │                          │
+│         ┌────────────────────────┼────────────────┐         │
+│         │                        │                │         │
+│         ▼                        ▼                ▼         │
+│  ┌─────────────┐          ┌──────────┐    ┌──────────────┐  │
+│  │  blocked    │          │  coder   │    │  workspace   │  │
+│  │  (403)      │          │  :7080   │◄───│  containers  │  │
+│  └─────────────┘          └──────────┘    └──────────────┘  │
+│                                                             │
+│  ┌──────────┐  ┌──────────┐                                 │
+│  │ registry │  │ database │                                 │
+│  │  :5000   │  │  :5432   │                                 │
+│  └──────────┘  └──────────┘                                 │
+└─────────────────────────────────────────────────────────────┘
+
+Request flow:
+  /* + X-Admin-Secret header → coder (allowed)
+  /api/v2/users POST (no header) → blocked (403)
+  /api/v2/.../workspaces POST (no header) → blocked (403)
+  /* (other requests) → coder (allowed)
 ```
 
 ### Image Registry
@@ -281,27 +302,11 @@ The local registry (`localhost:5000`) stores pre-built workspace images. This av
 
 ## Restricting Workspace Creation
 
-By default, any logged-in user can create workspaces. To restrict this to admin/backend only, use the provided nginx configuration.
-
-### Setup
-
-1. Copy `nginx-coder.conf` to your nginx config directory
-2. Edit the file and replace:
-   - `YOUR_SECRET_HERE` with a secure random string (e.g., `openssl rand -hex 32`)
-   - `YOUR_DOMAIN` with your Coder domain
-   - SSL certificate paths if needed
-   - Backend port if different from 7080
-
-3. Enable the config:
-   ```bash
-   cp nginx-coder.conf /etc/nginx/sites-available/coder
-   ln -s /etc/nginx/sites-available/coder /etc/nginx/sites-enabled/
-   nginx -t && systemctl reload nginx
-   ```
+By default, any logged-in user can create workspaces. This setup uses **Traefik** to block workspace/user creation unless the `X-Admin-Secret` header is present.
 
 ### How It Works
 
-The nginx config blocks these API endpoints unless the `X-Admin-Secret` header is present:
+Traefik blocks these API endpoints without a valid `X-Admin-Secret` header:
 - `POST /api/v2/users` - User creation
 - `POST /api/v2/organizations/{org}/members/{user}/workspaces` - Workspace creation
 
@@ -310,6 +315,18 @@ Users can still:
 - Start/stop their workspaces
 - Access all other Coder features
 
+### Configuration
+
+The `ADMIN_API_SECRET` is automatically generated during installation and stored in `.env`. You can find it with:
+
+```bash
+grep ADMIN_API_SECRET /root/coder/.env
+```
+
+### Standalone Nginx (Alternative)
+
+If you prefer to use an external nginx instead of Traefik, use `nginx-coder.conf` as a reference configuration.
+
 ### FastAPI Integration
 
 Create users and workspaces from your backend:
@@ -317,8 +334,8 @@ Create users and workspaces from your backend:
 ```python
 import httpx
 
-CODER_URL = "https://coder.example.com"
-ADMIN_SECRET = "your-secret-here"
+CODER_URL = "https://example.com"
+ADMIN_SECRET = "your-admin-api-secret-from-env"
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "admin-password"
 
@@ -359,7 +376,7 @@ async def create_user(username: str, email: str, password: str, full_name: str =
             f"{CODER_URL}/api/v2/users",
             headers={
                 "Coder-Session-Token": token,
-                "X-Admin-Secret": ADMIN_SECRET  # Required by nginx
+                "X-Admin-Secret": ADMIN_SECRET  # Required by Traefik
             },
             json=user_data
         )
@@ -383,7 +400,7 @@ async def create_workspace(username: str, workspace_name: str, template_name: st
             f"{CODER_URL}/api/v2/organizations/default/members/{username}/workspaces",
             headers={
                 "Coder-Session-Token": token,
-                "X-Admin-Secret": ADMIN_SECRET  # Required by nginx
+                "X-Admin-Secret": ADMIN_SECRET  # Required by Traefik
             },
             json={
                 "name": workspace_name,
@@ -402,7 +419,7 @@ async def provision_student(username: str, email: str, password: str, full_name:
 
 ### Security Notes
 
-- The `X-Admin-Secret` header is only checked by nginx, not by Coder itself
+- The `X-Admin-Secret` header is checked by Traefik, not by Coder itself
 - Keep the secret secure - anyone with it can create users/workspaces
-- The secret should match between nginx config and your backend
+- The secret is stored in `.env` and must match your backend configuration
 - Coder session tokens are still required for authentication

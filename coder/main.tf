@@ -93,10 +93,15 @@ resource "coder_agent" "main" {
     # Create default workspace folder
     mkdir -p ~/workspace
 
-    # Create Computor config file
-    cat > ~/workspace/.computor << 'COMPUTOR_EOF'
+    # Create Computor extension config directory and file
+    mkdir -p ~/.computor
+    cat > ~/.computor/config.json << COMPUTOR_EOF
 {
-  "backendUrl": "${var.computor_backend_url}"
+  "version": "1.0.0",
+  "authentication": {
+    "baseUrl": "${var.computor_backend_url}",
+    "autoLogin": true
+  }
 }
 COMPUTOR_EOF
 

@@ -8,6 +8,7 @@ set -e
 
 CODER_URL="${CODER_URL:-http://localhost:8446}"
 TEMPLATE_NAME="${TEMPLATE_NAME:-docker-workspace}"
+ADMIN_API_SECRET="${ADMIN_API_SECRET:-}"
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 NEW_USERNAME=""
@@ -18,7 +19,7 @@ WORKSPACE_NAME=""
 SKIP_WORKSPACE=false
 
 # Parse command line arguments
-while getopts "U:t:a:A:u:n:e:p:w:sh" opt; do
+while getopts "U:t:a:A:u:n:e:p:w:S:sh" opt; do
   case $opt in
     U)
       CODER_URL="$OPTARG"
@@ -47,11 +48,14 @@ while getopts "U:t:a:A:u:n:e:p:w:sh" opt; do
     w)
       WORKSPACE_NAME="$OPTARG"
       ;;
+    S)
+      ADMIN_API_SECRET="$OPTARG"
+      ;;
     s)
       SKIP_WORKSPACE=true
       ;;
     h)
-      echo "Usage: $0 -a ADMIN_EMAIL -A ADMIN_PASS -u USERNAME -e EMAIL -p PASSWORD [-n NAME] [-w WORKSPACE] [-t TEMPLATE] [-U URL] [-s]"
+      echo "Usage: $0 -a ADMIN_EMAIL -A ADMIN_PASS -u USERNAME -e EMAIL -p PASSWORD [-n NAME] [-w WORKSPACE] [-t TEMPLATE] [-U URL] [-S SECRET] [-s]"
       echo ""
       echo "Creates a new Coder user and optionally their workspace."
       echo ""
@@ -67,6 +71,7 @@ while getopts "U:t:a:A:u:n:e:p:w:sh" opt; do
       echo "  -w WORKSPACE  Workspace name (default: USERNAME-workspace)"
       echo "  -t TEMPLATE   Template name (default: docker-workspace)"
       echo "  -U URL        Coder URL (default: http://localhost:8446)"
+      echo "  -S SECRET     Admin API Secret (for Traefik protection, or set ADMIN_API_SECRET env)"
       echo "  -s            Skip workspace creation (user only)"
       echo "  -h            Show this help"
       echo ""
@@ -164,10 +169,18 @@ else
   }"
 fi
 
-USER_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/users" \
-  -H "Content-Type: application/json" \
-  -H "Coder-Session-Token: ${TOKEN}" \
-  -d "$USER_JSON")
+if [ -n "$ADMIN_API_SECRET" ]; then
+  USER_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/users" \
+    -H "Content-Type: application/json" \
+    -H "Coder-Session-Token: ${TOKEN}" \
+    -H "X-Admin-Secret: ${ADMIN_API_SECRET}" \
+    -d "$USER_JSON")
+else
+  USER_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/users" \
+    -H "Content-Type: application/json" \
+    -H "Coder-Session-Token: ${TOKEN}" \
+    -d "$USER_JSON")
+fi
 
 if echo "$USER_RESULT" | grep -q '"id"'; then
   USER_ID=$(echo "$USER_RESULT" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
@@ -217,13 +230,24 @@ fi
 echo "Template ID: ${TEMPLATE_ID}"
 echo "Creating workspace '${WORKSPACE_NAME}' for user '${NEW_USERNAME}'..."
 
-WS_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/organizations/default/members/${NEW_USERNAME}/workspaces" \
-  -H "Content-Type: application/json" \
-  -H "Coder-Session-Token: ${TOKEN}" \
-  -d "{
-    \"name\": \"${WORKSPACE_NAME}\",
-    \"template_id\": \"${TEMPLATE_ID}\"
-  }")
+if [ -n "$ADMIN_API_SECRET" ]; then
+  WS_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/organizations/default/members/${NEW_USERNAME}/workspaces" \
+    -H "Content-Type: application/json" \
+    -H "Coder-Session-Token: ${TOKEN}" \
+    -H "X-Admin-Secret: ${ADMIN_API_SECRET}" \
+    -d "{
+      \"name\": \"${WORKSPACE_NAME}\",
+      \"template_id\": \"${TEMPLATE_ID}\"
+    }")
+else
+  WS_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/organizations/default/members/${NEW_USERNAME}/workspaces" \
+    -H "Content-Type: application/json" \
+    -H "Coder-Session-Token: ${TOKEN}" \
+    -d "{
+      \"name\": \"${WORKSPACE_NAME}\",
+      \"template_id\": \"${TEMPLATE_ID}\"
+    }")
+fi
 
 if echo "$WS_RESULT" | grep -q '"id"'; then
   WS_ID=$(echo "$WS_RESULT" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)

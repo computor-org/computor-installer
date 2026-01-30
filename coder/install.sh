@@ -126,6 +126,14 @@ fi
 echo "Port set to: $CODER_PORT"
 
 ###########################
+# GENERATE ADMIN API SECRET
+###########################
+
+echo "Generating Admin API Secret for workspace creation protection..."
+ADMIN_API_SECRET=$(openssl rand -hex 32)
+echo "Admin API Secret generated."
+
+###########################
 # ADMIN USER INPUT (if partial info provided)
 ###########################
 
@@ -195,6 +203,9 @@ fi
 echo "Copying docker-compose.yml..."
 cp "${SCRIPT_DIR}/docker-compose.yml" "${CODER_DIR}/docker-compose.yml"
 
+echo "Copying blocked.conf for Traefik protection..."
+cp "${SCRIPT_DIR}/blocked.conf" "${CODER_DIR}/blocked.conf"
+
 echo "Creating .env file..."
 cat > "${CODER_DIR}/.env" <<EOF
 WORKSPACE_IMAGE=${WORKSPACE_IMAGE}
@@ -208,6 +219,7 @@ ADMIN_USERNAME=${ADMIN_USERNAME}
 ADMIN_EMAIL=${ADMIN_EMAIL}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 TEMPLATE_NAME=${TEMPLATE_NAME}
+ADMIN_API_SECRET=${ADMIN_API_SECRET}
 EOF
 
 ###########################
@@ -245,6 +257,11 @@ if [ -n "$ADMIN_USERNAME" ]; then
   echo "Admin user: $ADMIN_USERNAME ($ADMIN_EMAIL)"
   echo "Template: $TEMPLATE_NAME (will be created automatically)"
 fi
+echo ""
+echo "WORKSPACE CREATION PROTECTION:"
+echo "  Admin API Secret: $ADMIN_API_SECRET"
+echo "  Use this header to create users/workspaces from your backend:"
+echo "    X-Admin-Secret: $ADMIN_API_SECRET"
 echo ""
 echo "To create additional admin users later, run:"
 echo "  ${CODER_DIR}/setup-admin.sh"
