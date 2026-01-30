@@ -11,13 +11,14 @@ TEMPLATE_NAME="${TEMPLATE_NAME:-docker-workspace}"
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 NEW_USERNAME=""
+NEW_FULLNAME=""
 NEW_EMAIL=""
 NEW_PASSWORD=""
 WORKSPACE_NAME=""
 SKIP_WORKSPACE=false
 
 # Parse command line arguments
-while getopts "U:t:a:A:u:e:p:w:sh" opt; do
+while getopts "U:t:a:A:u:n:e:p:w:sh" opt; do
   case $opt in
     U)
       CODER_URL="$OPTARG"
@@ -34,6 +35,9 @@ while getopts "U:t:a:A:u:e:p:w:sh" opt; do
     u)
       NEW_USERNAME="$OPTARG"
       ;;
+    n)
+      NEW_FULLNAME="$OPTARG"
+      ;;
     e)
       NEW_EMAIL="$OPTARG"
       ;;
@@ -47,7 +51,7 @@ while getopts "U:t:a:A:u:e:p:w:sh" opt; do
       SKIP_WORKSPACE=true
       ;;
     h)
-      echo "Usage: $0 -a ADMIN_EMAIL -A ADMIN_PASS -u USERNAME -e EMAIL -p PASSWORD [-w WORKSPACE] [-t TEMPLATE] [-U URL] [-s]"
+      echo "Usage: $0 -a ADMIN_EMAIL -A ADMIN_PASS -u USERNAME -e EMAIL -p PASSWORD [-n NAME] [-w WORKSPACE] [-t TEMPLATE] [-U URL] [-s]"
       echo ""
       echo "Creates a new Coder user and optionally their workspace."
       echo ""
@@ -59,6 +63,7 @@ while getopts "U:t:a:A:u:e:p:w:sh" opt; do
       echo "  -p PASSWORD   New user's password"
       echo ""
       echo "Optional:"
+      echo "  -n NAME       Full name / display name (used for git config)"
       echo "  -w WORKSPACE  Workspace name (default: USERNAME-workspace)"
       echo "  -t TEMPLATE   Template name (default: docker-workspace)"
       echo "  -U URL        Coder URL (default: http://localhost:8446)"
@@ -67,8 +72,8 @@ while getopts "U:t:a:A:u:e:p:w:sh" opt; do
       echo ""
       echo "Examples:"
       echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass"
+      echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass -n 'John Doe'"
       echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass -w my-workspace"
-      echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass -s"
       exit 0
       ;;
     \?)
@@ -139,16 +144,30 @@ echo "Organization ID: ${ORG_ID}"
 
 echo "Creating user '${NEW_USERNAME}'..."
 
-USER_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/users" \
-  -H "Content-Type: application/json" \
-  -H "Coder-Session-Token: ${TOKEN}" \
-  -d "{
+# Build JSON payload (include name only if provided)
+if [ -n "$NEW_FULLNAME" ]; then
+  USER_JSON="{
+    \"username\": \"${NEW_USERNAME}\",
+    \"name\": \"${NEW_FULLNAME}\",
+    \"email\": \"${NEW_EMAIL}\",
+    \"password\": \"${NEW_PASSWORD}\",
+    \"user_status\": \"active\",
+    \"organization_ids\": [\"${ORG_ID}\"]
+  }"
+else
+  USER_JSON="{
     \"username\": \"${NEW_USERNAME}\",
     \"email\": \"${NEW_EMAIL}\",
     \"password\": \"${NEW_PASSWORD}\",
     \"user_status\": \"active\",
     \"organization_ids\": [\"${ORG_ID}\"]
-  }")
+  }"
+fi
+
+USER_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/users" \
+  -H "Content-Type: application/json" \
+  -H "Coder-Session-Token: ${TOKEN}" \
+  -d "$USER_JSON")
 
 if echo "$USER_RESULT" | grep -q '"id"'; then
   USER_ID=$(echo "$USER_RESULT" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
@@ -226,6 +245,9 @@ echo "====================================================="
 echo "User and workspace created successfully!"
 echo ""
 echo "User:      ${NEW_USERNAME}"
+if [ -n "$NEW_FULLNAME" ]; then
+  echo "Name:      ${NEW_FULLNAME}"
+fi
 echo "Email:     ${NEW_EMAIL}"
 echo "Workspace: ${WORKSPACE_NAME}"
 echo ""

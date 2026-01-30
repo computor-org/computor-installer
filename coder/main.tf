@@ -86,6 +86,10 @@ resource "coder_agent" "main" {
       touch ~/.init_done
     fi
 
+    # Configure git with user info
+    git config --global user.name "${coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)}"
+    git config --global user.email "${data.coder_workspace_owner.me.email}"
+
     # Create default workspace folder
     mkdir -p ~/workspace
 

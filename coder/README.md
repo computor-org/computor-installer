@@ -217,6 +217,12 @@ Use `create-user.sh` to create users and their workspaces via the Coder API:
   -a admin@example.com -A adminpass \
   -u johndoe -e john@example.com -p userpass
 
+# Create user with full name (for git config)
+./create-user.sh \
+  -a admin@example.com -A adminpass \
+  -u johndoe -e john@example.com -p userpass \
+  -n "John Doe"
+
 # Create user with custom workspace name
 ./create-user.sh \
   -a admin@example.com -A adminpass \
@@ -239,6 +245,7 @@ Use `create-user.sh` to create users and their workspaces via the Coder API:
 | `-u USERNAME` | New user's username (required) |
 | `-e EMAIL` | New user's email (required) |
 | `-p PASSWORD` | New user's password (required) |
+| `-n NAME` | Full name / display name (used for git config) |
 | `-w WORKSPACE` | Workspace name (default: USERNAME-workspace) |
 | `-t TEMPLATE` | Template name (default: docker-workspace) |
 | `-U URL` | Coder URL (default: http://localhost:8446) |
