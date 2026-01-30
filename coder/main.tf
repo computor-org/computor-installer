@@ -43,6 +43,12 @@ variable "docker_network" {
   type        = string
 }
 
+variable "computor_backend_url" {
+  default     = "https://computor.itp.tugraz.at/api"
+  description = "Backend URL for Computor extension"
+  type        = string
+}
+
 ###########################
 # DATA SOURCES
 ###########################
@@ -79,6 +85,16 @@ resource "coder_agent" "main" {
       cp -rT /etc/skel ~
       touch ~/.init_done
     fi
+
+    # Create default workspace folder
+    mkdir -p ~/workspace
+
+    # Create Computor config file
+    cat > ~/workspace/.computor << 'COMPUTOR_EOF'
+{
+  "backendUrl": "${var.computor_backend_url}"
+}
+COMPUTOR_EOF
 
     # Start code-server in background
     code-server \
@@ -131,6 +147,7 @@ module "code-server" {
   source   = "registry.coder.com/coder/code-server/coder"
   version  = "~> 1.0"
   agent_id = coder_agent.main.id
+  folder   = "/home/coder/workspace"
   order    = 1
 }
 
