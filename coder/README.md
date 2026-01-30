@@ -124,6 +124,7 @@ Re-running `docker compose up -d` is safe (idempotent).
 ```
 /root/coder/
 ├── docker-compose.yml          # Full stack: Coder + PostgreSQL + registry + setup containers
+├── .env                        # Environment variables for docker-compose
 ├── setup-admin.sh              # Admin user creation script (for later use)
 └── templates/docker/           # Workspace template files
     ├── main.tf                 # Terraform configuration
@@ -188,6 +189,7 @@ docker compose up -d
 | `install.sh` | Main installation script |
 | `stop.sh` | Stop/cleanup script |
 | `setup-admin.sh` | Standalone admin user creation |
+| `docker-compose.yml` | Docker Compose configuration |
 | `main.tf` | Terraform template for workspaces |
 | `Dockerfile` | Workspace image with computor extension |
 

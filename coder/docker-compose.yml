@@ -1,0 +1,190 @@
+services:
+  # Local Docker registry for workspace images
+  registry:
+    image: registry:2
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+    networks:
+      - coder-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/v2/"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Build workspace image and push to local registry
+  image-builder:
+    image: docker:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for registry to be ready..."
+        until wget -q --spider http://registry:5000/v2/; do
+          sleep 1
+        done
+        echo "Registry is ready."
+
+        if [ ! -f /workspace/Dockerfile ]; then
+          echo "No Dockerfile found, skipping image build."
+          exit 0
+        fi
+
+        echo "Building workspace image..."
+        cd /workspace
+        docker build -t ${WORKSPACE_IMAGE} .
+
+        echo "Pushing image to local registry..."
+        docker push ${WORKSPACE_IMAGE}
+
+        echo "Workspace image built and pushed successfully."
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${TEMPLATE_DIR}:/workspace:ro
+    networks:
+      - coder-network
+    depends_on:
+      registry:
+        condition: service_healthy
+    restart: "no"
+
+  coder:
+    image: ghcr.io/coder/coder:latest
+    ports:
+      - "${CODER_PORT}:7080"
+    environment:
+      CODER_PG_CONNECTION_URL: "postgresql://coder:${POSTGRES_PASSWORD}@database:${POSTGRES_PORT}/coder?sslmode=disable"
+      CODER_HTTP_ADDRESS: "0.0.0.0:7080"
+      CODER_ACCESS_URL: "${CODER_ACCESS_URL}"
+    group_add:
+      - "${DOCKER_GID}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - coder_home:/home/coder
+    networks:
+      - coder-network
+    depends_on:
+      database:
+        condition: service_healthy
+      image-builder:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7080/api/v2/buildinfo"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # Post-start container: creates admin user after Coder is healthy
+  coder-admin-setup:
+    image: ghcr.io/coder/coder:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$$CODER_INIT_USERNAME" ]; then
+          echo "No admin credentials provided, skipping admin creation."
+          exit 0
+        fi
+        echo "Creating admin user: $$CODER_INIT_USERNAME"
+        coder server create-admin-user \
+          --username "$$CODER_INIT_USERNAME" \
+          --email "$$CODER_INIT_EMAIL" \
+          --password "$$CODER_INIT_PASSWORD" \
+          --postgres-url "$$CODER_PG_CONNECTION_URL" \
+          && echo "Admin user created successfully." \
+          || echo "Admin creation skipped (may already exist)."
+        exit 0
+    environment:
+      CODER_PG_CONNECTION_URL: "postgresql://coder:${POSTGRES_PASSWORD}@database:${POSTGRES_PORT}/coder?sslmode=disable"
+      CODER_INIT_USERNAME: "${ADMIN_USERNAME}"
+      CODER_INIT_EMAIL: "${ADMIN_EMAIL}"
+      CODER_INIT_PASSWORD: "${ADMIN_PASSWORD}"
+    networks:
+      - coder-network
+    depends_on:
+      coder:
+        condition: service_healthy
+    restart: "no"
+
+  # Post-admin container: creates template after admin is set up
+  coder-template-setup:
+    image: ghcr.io/coder/coder:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$$CODER_INIT_EMAIL" ] || [ -z "$$CODER_INIT_PASSWORD" ]; then
+          echo "No admin credentials provided, skipping template creation."
+          exit 0
+        fi
+
+        if [ ! -f /templates/main.tf ]; then
+          echo "No template files found, skipping template creation."
+          exit 0
+        fi
+
+        echo "Logging in to Coder..."
+
+        # Login via API and get session token
+        SESSION_TOKEN=$$(curl -s -X POST "http://coder:7080/api/v2/users/login" \
+          -H "Content-Type: application/json" \
+          -d "{\"email\":\"$$CODER_INIT_EMAIL\",\"password\":\"$$CODER_INIT_PASSWORD\"}" \
+          | sed -n 's/.*"session_token":"\([^"]*\)".*/\1/p')
+
+        if [ -z "$$SESSION_TOKEN" ]; then
+          echo "Failed to get session token, skipping template creation."
+          exit 0
+        fi
+
+        echo "Session token obtained."
+        export CODER_SESSION_TOKEN="$$SESSION_TOKEN"
+        export CODER_URL="http://coder:7080"
+
+        echo "Pushing template: $$TEMPLATE_NAME"
+        cd /templates
+        coder templates push "$$TEMPLATE_NAME" --directory . --yes \
+          && echo "Template '$$TEMPLATE_NAME' created successfully." \
+          || echo "Template creation skipped (may already exist)."
+
+        exit 0
+    environment:
+      CODER_INIT_EMAIL: "${ADMIN_EMAIL}"
+      CODER_INIT_PASSWORD: "${ADMIN_PASSWORD}"
+      TEMPLATE_NAME: "${TEMPLATE_NAME}"
+    volumes:
+      - ${TEMPLATE_DIR}:/templates:ro
+    networks:
+      - coder-network
+    depends_on:
+      coder-admin-setup:
+        condition: service_completed_successfully
+    restart: "no"
+
+  database:
+    image: "postgres:17"
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:${POSTGRES_PORT}"
+    environment:
+      POSTGRES_USER: coder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: coder
+      PGPORT: ${POSTGRES_PORT}
+    volumes:
+      - coder_data:/var/lib/postgresql/data
+    networks:
+      - coder-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coder -d coder -p ${POSTGRES_PORT}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  coder_data:
+  coder_home:
+  registry_data:
+
+networks:
+  coder-network:
+    name: coder-network
+    driver: bridge
