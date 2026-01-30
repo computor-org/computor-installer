@@ -189,6 +189,7 @@ docker compose up -d
 | `install.sh` | Main installation script |
 | `stop.sh` | Stop/cleanup script |
 | `setup-admin.sh` | Standalone admin user creation |
+| `create-user.sh` | Create user + workspace via API |
 | `docker-compose.yml` | Docker Compose configuration |
 | `main.tf` | Terraform template for workspaces |
 | `Dockerfile` | Workspace image with computor extension |
@@ -205,6 +206,43 @@ docker compose up -d
 # Custom directory
 ./stop.sh -d /opt/coder
 ```
+
+## Creating Users
+
+Use `create-user.sh` to create users and their workspaces via the Coder API:
+
+```bash
+# Create user with workspace
+./create-user.sh \
+  -a admin@example.com -A adminpass \
+  -u johndoe -e john@example.com -p userpass
+
+# Create user with custom workspace name
+./create-user.sh \
+  -a admin@example.com -A adminpass \
+  -u johndoe -e john@example.com -p userpass \
+  -w my-custom-workspace
+
+# Create user only (no workspace)
+./create-user.sh \
+  -a admin@example.com -A adminpass \
+  -u johndoe -e john@example.com -p userpass \
+  -s
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-a EMAIL` | Admin email (required) |
+| `-A PASSWORD` | Admin password (required) |
+| `-u USERNAME` | New user's username (required) |
+| `-e EMAIL` | New user's email (required) |
+| `-p PASSWORD` | New user's password (required) |
+| `-w WORKSPACE` | Workspace name (default: USERNAME-workspace) |
+| `-t TEMPLATE` | Template name (default: docker-workspace) |
+| `-U URL` | Coder URL (default: http://localhost:8446) |
+| `-s` | Skip workspace creation |
 
 ## Architecture
 
