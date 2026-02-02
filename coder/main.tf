@@ -49,6 +49,13 @@ variable "computor_backend_url" {
   type        = string
 }
 
+variable "code_server_password" {
+  default     = ""
+  description = "Password for code-server access (empty = no password required)"
+  type        = string
+  sensitive   = true
+}
+
 ###########################
 # DATA SOURCES
 ###########################
@@ -106,11 +113,21 @@ resource "coder_agent" "main" {
 COMPUTOR_EOF
 
     # Start code-server in background
+    # Use password auth if password is provided, otherwise no auth
+    %{ if var.code_server_password != "" }
+    export PASSWORD="${var.code_server_password}"
+    code-server \
+      --auth password \
+      --port ${var.code_server_port} \
+      --extensions-dir /opt/code-server/extensions \
+      >/tmp/code-server.log 2>&1 &
+    %{ else }
     code-server \
       --auth none \
       --port ${var.code_server_port} \
       --extensions-dir /opt/code-server/extensions \
       >/tmp/code-server.log 2>&1 &
+    %{ endif }
   EOT
 
   env = {

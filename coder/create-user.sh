@@ -16,10 +16,12 @@ NEW_FULLNAME=""
 NEW_EMAIL=""
 NEW_PASSWORD=""
 WORKSPACE_NAME=""
+CODE_SERVER_PASSWORD=""
+GENERATE_CS_PASSWORD=false
 SKIP_WORKSPACE=false
 
 # Parse command line arguments
-while getopts "U:t:a:A:u:n:e:p:w:S:sh" opt; do
+while getopts "U:t:a:A:u:n:e:p:w:S:C:gsh" opt; do
   case $opt in
     U)
       CODER_URL="$OPTARG"
@@ -51,11 +53,17 @@ while getopts "U:t:a:A:u:n:e:p:w:S:sh" opt; do
     S)
       ADMIN_API_SECRET="$OPTARG"
       ;;
+    C)
+      CODE_SERVER_PASSWORD="$OPTARG"
+      ;;
+    g)
+      GENERATE_CS_PASSWORD=true
+      ;;
     s)
       SKIP_WORKSPACE=true
       ;;
     h)
-      echo "Usage: $0 -a ADMIN_EMAIL -A ADMIN_PASS -u USERNAME -e EMAIL -p PASSWORD [-n NAME] [-w WORKSPACE] [-t TEMPLATE] [-U URL] [-S SECRET] [-s]"
+      echo "Usage: $0 -a ADMIN_EMAIL -A ADMIN_PASS -u USERNAME -e EMAIL -p PASSWORD [-n NAME] [-w WORKSPACE] [-t TEMPLATE] [-U URL] [-S SECRET] [-C PASSWORD | -g] [-s]"
       echo ""
       echo "Creates a new Coder user and optionally their workspace."
       echo ""
@@ -72,13 +80,15 @@ while getopts "U:t:a:A:u:n:e:p:w:S:sh" opt; do
       echo "  -t TEMPLATE   Template name (default: docker-workspace)"
       echo "  -U URL        Coder URL (default: http://localhost:8446)"
       echo "  -S SECRET     Admin API Secret (for Traefik protection, or set ADMIN_API_SECRET env)"
+      echo "  -C PASSWORD   code-server password for direct access (enables password auth)"
+      echo "  -g            Auto-generate code-server password (random 16 chars)"
       echo "  -s            Skip workspace creation (user only)"
       echo "  -h            Show this help"
       echo ""
       echo "Examples:"
       echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass"
       echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass -n 'John Doe'"
-      echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass -w my-workspace"
+      echo "  $0 -a admin@example.com -A adminpass -u john -e john@example.com -p johnpass -g  # Auto-generate code-server password"
       exit 0
       ;;
     \?)
@@ -106,6 +116,12 @@ fi
 # Default workspace name
 if [ -z "$WORKSPACE_NAME" ]; then
   WORKSPACE_NAME="${NEW_USERNAME}-workspace"
+fi
+
+# Generate code-server password if requested
+if [ "$GENERATE_CS_PASSWORD" = true ] && [ -z "$CODE_SERVER_PASSWORD" ]; then
+  CODE_SERVER_PASSWORD=$(openssl rand -base64 12 | tr -d '/+=' | head -c 16)
+  echo "Generated code-server password: $CODE_SERVER_PASSWORD"
 fi
 
 ###########################
@@ -230,23 +246,36 @@ fi
 echo "Template ID: ${TEMPLATE_ID}"
 echo "Creating workspace '${WORKSPACE_NAME}' for user '${NEW_USERNAME}'..."
 
+# Build workspace JSON with optional code-server password
+if [ -n "$CODE_SERVER_PASSWORD" ]; then
+  WS_JSON="{
+    \"name\": \"${WORKSPACE_NAME}\",
+    \"template_id\": \"${TEMPLATE_ID}\",
+    \"rich_parameter_values\": [
+      {
+        \"name\": \"code_server_password\",
+        \"value\": \"${CODE_SERVER_PASSWORD}\"
+      }
+    ]
+  }"
+else
+  WS_JSON="{
+    \"name\": \"${WORKSPACE_NAME}\",
+    \"template_id\": \"${TEMPLATE_ID}\"
+  }"
+fi
+
 if [ -n "$ADMIN_API_SECRET" ]; then
   WS_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/organizations/default/members/${NEW_USERNAME}/workspaces" \
     -H "Content-Type: application/json" \
     -H "Coder-Session-Token: ${TOKEN}" \
     -H "X-Admin-Secret: ${ADMIN_API_SECRET}" \
-    -d "{
-      \"name\": \"${WORKSPACE_NAME}\",
-      \"template_id\": \"${TEMPLATE_ID}\"
-    }")
+    -d "$WS_JSON")
 else
   WS_RESULT=$(curl -s -X POST "${CODER_URL}/api/v2/organizations/default/members/${NEW_USERNAME}/workspaces" \
     -H "Content-Type: application/json" \
     -H "Coder-Session-Token: ${TOKEN}" \
-    -d "{
-      \"name\": \"${WORKSPACE_NAME}\",
-      \"template_id\": \"${TEMPLATE_ID}\"
-    }")
+    -d "$WS_JSON")
 fi
 
 if echo "$WS_RESULT" | grep -q '"id"'; then
@@ -276,4 +305,10 @@ echo "Email:     ${NEW_EMAIL}"
 echo "Workspace: ${WORKSPACE_NAME}"
 echo ""
 echo "Login URL: ${CODER_URL}"
+if [ -n "$CODE_SERVER_PASSWORD" ]; then
+  echo ""
+  echo "CODE-SERVER DIRECT ACCESS:"
+  echo "  Password: ${CODE_SERVER_PASSWORD}"
+  echo "  Note: Use this password when accessing code-server directly"
+fi
 echo "====================================================="
