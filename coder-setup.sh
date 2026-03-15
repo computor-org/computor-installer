@@ -71,7 +71,9 @@ if [ "$CONFIGURE_NGINX" = true ]; then
   cat <<EOF > /etc/nginx/sites-available/coder.conf
 server {
     listen 80;
+    listen [::]:80; # <--- WICHTIG für IPv6
     server_name ${DOMAIN};
+
     location / {
         proxy_pass http://127.0.0.1:${PORT};
         proxy_http_version 1.1;
