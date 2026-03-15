@@ -1,107 +1,100 @@
-# Coder Setup Script
+# Computor Backend Installer
 
-Quick setup script for Coder deployment with Docker and optional Nginx configuration.
+Dieses Repository enthält eine Suite von Scripten zur automatisierten Einrichtung eines Backends inklusive GitLab und Coder auf einem frischen Debian/Ubuntu-Server.
 
-## Usage
+## 🚀 Schnellstart (Master Setup)
+
+Verwende das `setup.sh` Script, um das gesamte System (Docker, Nginx, Backend, GitLab, Coder) in einem Rutsch zu installieren.
 
 ```bash
-./coder-setup.sh [OPTIONS]
+# Script laden
+curl -O https://raw.githubusercontent.com/computor-org/computor-installer/main/setup.sh
+chmod +x setup.sh
+
+# Installation starten (Beispiel)
+./setup.sh -d meinserver.at -m admin@meinserver.at -p MeinPasswort123 -g -c
 ```
 
-## Options
+### Optionen (`setup.sh`)
+| Flag | Beschreibung | Erforderlich |
+|------|-------------|--------------|
+| `-d` | Hauptdomain des Servers (z.B. `computor.at`) | Ja |
+| `-m` | E-Mail für SSL-Zertifikate (Let's Encrypt) | Ja |
+| `-p` | Admin-Passwort für alle Dienste | Nein (Default: admin123) |
+| `-g` | GitLab installieren (`git.domain.tld`) | Nein |
+| `-c` | Coder installieren (`coder.domain.tld`) | Nein |
 
-| Flag | Description | Default |
+---
+
+## 🛠 Einzel-Scripte (Standalone)
+
+Jedes Script kann auch unabhängig verwendet werden.
+
+### 1. Coder Setup (`coder-setup.sh`)
+
+Installiert Coder in einem Docker-Container und konfiguriert Nginx als Reverse Proxy.
+
+#### Nutzung
+```bash
+./coder-setup.sh -u coder.deinedomain.at [OPTIONS]
+```
+
+#### Optionen
+| Flag | Beschreibung | Default |
 |------|-------------|---------|
-| `-d DIRECTORY` | Coder installation directory | `/root/coder` |
-| `-i` | Install Docker and system updates | Disabled |
-| `-w` | Configure Nginx webserver | Disabled |
-| `-h` | Show help | - |
-
-## Examples
-
-```bash
-# Basic installation (Docker and Nginx must already be installed)
-./coder-setup.sh
-
-# Install everything (Docker + Coder + Nginx)
-./coder-setup.sh -i -w
-
-# Custom directory without Docker/Nginx
-./coder-setup.sh -d /opt/coder
-
-# Full custom setup
-./coder-setup.sh -d /opt/coder -i -w
-```
-
-## Requirements
-
-- Root access
-- Debian-based Linux system (if using `-i` flag)
-- Domain name and port will be prompted during execution
+| `-u DOMAIN` | Domain für Coder | **Erforderlich** |
+| `-p PORT` | Interner Port für den Container | `7080` |
+| `-d DIRECTORY` | Installationsverzeichnis | `/opt/coder` |
+| `-w` | Nginx-Konfiguration erstellen | Deaktiviert |
+| `-i` | Docker & System-Updates installieren | Deaktiviert |
 
 ---
 
-# GitLab Setup Script
+### 2. GitLab Setup (`gitlab-setup.sh`)
 
-Automated setup for GitLab Omnibus using Docker and optional Nginx proxy.
+Richtet eine GitLab Omnibus Instanz via Docker ein.
 
-## Usage
-
+#### Nutzung
 ```bash
-./gitlab-setup.sh -u DOMAIN -p PORT -s PASSWORD [OPTIONS]
+./gitlab-setup.sh -u git.domain.at -p 8080 -s PASSWORT [OPTIONS]
 ```
 
-## Options
-
-| Flag | Description | Mandatory | Default |
+#### Optionen
+| Flag | Beschreibung | Mandatory | Default |
 |------|-------------|-----------|---------|
-| `-u DOMAIN` | Domain for GitLab (e.g., git.example.com) | Yes | - |
-| `-p PORT` | Internal Port for GitLab container | Yes | - |
-| `-s PASSWORD` | Initial Admin (root) password | Yes | - |
-| `-d DIRECTORY` | Installation directory | No | `/root/dev-gitlab` |
-| `-i` | Install Docker and system updates | No | Disabled |
-| `-w` | Configure Nginx webserver | No | Disabled |
-| `-h` | Show help | No | - |
-
-## Examples
-
-```bash
-# Full installation including Docker and Nginx
-./gitlab-setup.sh -u git.computor.at -p 8080 -s MySecretPass123 -i -w
-
-# Only create GitLab configuration in custom directory
-./gitlab-setup.sh -u git.computor.at -p 8080 -s MySecretPass123 -d /opt/gitlab
-```
+| `-u DOMAIN` | Domain für GitLab | Ja | - |
+| `-p PORT` | Host-Port für GitLab (HTTP) | Ja | `8080` |
+| `-s PASSWORD` | Initiales Root-Passwort | Ja | - |
+| `-d DIRECTORY` | Installationsverzeichnis | Nein | `/opt/gitlab-data` |
+| `-w` | Nginx-Konfiguration erstellen | Nein | Deaktiviert |
+| `-i` | Docker & System-Updates installieren | Nein | Deaktiviert |
 
 ---
 
-# Certify Script
+### 3. SSL Zertifizierung (`certify.sh`)
 
-Fully automated SSL certificate acquisition via Let's Encrypt and Certbot for Nginx.
+Automatisiert den Bezug von SSL-Zertifikaten über Let's Encrypt für Nginx.
 
-## Usage
-
+#### Nutzung
 ```bash
-./certify.sh -d DOMAIN -m EMAIL [OPTIONS]
+./certify.sh -d DOMAIN -m EMAIL
 ```
 
-## Options
+#### Details
+- Installiert Certbot via `apt` oder `snap`.
+- Erkennt bestehende Nginx-Konfigurationen für die Domain automatisch.
+- Erzwingt eine HTTP-zu-HTTPS Weiterleitung.
+- Richtet einen automatischen Erneuerungs-Check (Cron) ein.
 
-| Flag | Description | Mandatory |
-|------|-------------|-----------|
-| `-d DOMAIN` | The domain to secure (must point to this server) | Yes |
-| `-m EMAIL` | Email for Let's Encrypt notifications | Yes |
-| `-h` | Show help | No |
+---
 
-## Examples
+## 🏗 Architektur-Hinweise
 
-```bash
-# Secure the domain without any interactive prompts
-./certify.sh -d git.computor.at -m admin@computor.at
-```
+- **Reverse Proxy**: Alle Dienste binden sich an `127.0.0.1` (Localhost). Nur Nginx auf dem Host ist von außen über Port 80/443 erreichbar. Dies erhöht die Sicherheit drastisch.
+- **SSL**: Jede Subdomain erhält ein eigenes Zertifikat.
+- **Persistenz**: Alle Daten werden in `/opt/` gespeichert, um sie einfach sichern zu können.
+- **Betriebssystem**: Optimiert für Debian 11/12 und Ubuntu 22.04/24.04.
 
-## Notes
-
-- This script installs Certbot via `snapd`.
-- It automatically configures Nginx to redirect all HTTP traffic to HTTPS.
-- A dry-run for automatic renewal is performed at the end of the script.
+## ⚠️ Voraussetzungen
+- Ein Root-Benutzer oder Sudo-Berechtigungen.
+- Die Domains/Subdomains müssen bereits per DNS (A-Record) auf die Server-IP zeigen.
