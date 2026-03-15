@@ -7,8 +7,7 @@ set -e
 GITHUB_ORG="computor-org"
 SERVER_REPO="computor-installer"
 BRANCH="main"
-RAW_BASE_URL="https://raw.githubusercontent.com/$GITHUB_ORG/$SERVER_REPO/$BRANCH"
-
+RAW_BASE_URL="https://github.com/$GITHUB_ORG/$SERVER_REPO/$BRANCH"
 INSTALL_BASE_DIR="/opt/computor"
 
 # Farben
