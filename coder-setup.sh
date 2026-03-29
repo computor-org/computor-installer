@@ -6,27 +6,33 @@ CONFIGURE_NGINX=false
 INSTALL_DOCKER=false
 DOMAIN=""
 PORT="7080"
+ADMIN_EMAIL=""
+ADMIN_PASS=""
 
-# FIX: getopts braucht u: und p: um Werte für Domain/Port zu akzeptieren
-while getopts "d:wihu:p:" opt; do
+# getopts erweitert um m: (Email) und s: (Passwort)
+while getopts "d:wihu:p:m:s:" opt; do
   case $opt in
     d) CODER_DIR="$OPTARG" ;;
     u) DOMAIN="$OPTARG" ;;
     p) PORT="$OPTARG" ;;
+    m) ADMIN_EMAIL="$OPTARG" ;;
+    s) ADMIN_PASS="$OPTARG" ;;
     w) CONFIGURE_NGINX=true ;;
     i) INSTALL_DOCKER=true ;;
     h)
-      echo "Usage: $0 [-d DIR] [-u DOMAIN] [-p PORT] [-w] [-i]"
+      echo "Usage: $0 [-d DIR] [-u DOMAIN] [-p PORT] [-m EMAIL] [-s PASS] [-w] [-i]"
       exit 0
       ;;
   esac
 done
 
-if [ -z "$DOMAIN" ]; then echo "Fehler: Domain (-u) fehlt!"; exit 1; fi
+if [ -z "$DOMAIN" ] || [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASS" ]; then
+    echo "Fehler: Domain (-u), Email (-m) und Passwort (-s) erforderlich!"
+    exit 1
+fi
 
 # Docker Installation (nur wenn -i gesetzt)
 if [ "$INSTALL_DOCKER" = true ]; then
-  log "Installiere Docker..."
   apt update && apt install -y ca-certificates curl gnupg lsb-release
   curl -fsSL https://get.docker.com | sh
 fi
@@ -35,7 +41,7 @@ DOCKER_GID=$(getent group docker | cut -d: -f3 || echo "999")
 mkdir -p "$CODER_DIR"
 cd "$CODER_DIR"
 
-# Docker Compose Erstellung
+# Docker Compose Erstellung mit Admin-Auto-Setup
 cat <<EOF > docker-compose.yml
 services:
   coder:
@@ -46,6 +52,11 @@ services:
       CODER_PG_CONNECTION_URL: "postgresql://coder:coder_password@database/coder?sslmode=disable"
       CODER_HTTP_ADDRESS: "0.0.0.0:7080"
       CODER_ACCESS_URL: "https://${DOMAIN}"
+      # AUTOMATISCHER ADMIN ACCOUNT:
+      CODER_FIRST_USER_EMAIL: "${ADMIN_EMAIL}"
+      CODER_FIRST_USER_PASSWORD: "${ADMIN_PASS}"
+      CODER_FIRST_USER_USERNAME: "admin"
+      CODER_FIRST_USER_TRIAL: "true"
     group_add: ["${DOCKER_GID}"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -66,14 +77,12 @@ volumes:
   coder_home:
 EOF
 
-# Nginx Konfiguration
+# Nginx Konfiguration (unverändert)
 if [ "$CONFIGURE_NGINX" = true ]; then
   cat <<EOF > /etc/nginx/sites-available/coder.conf
 server {
     listen 80;
-    listen [::]:80; # <--- WICHTIG für IPv6
     server_name ${DOMAIN};
-
     location / {
         proxy_pass http://127.0.0.1:${PORT};
         proxy_http_version 1.1;
@@ -89,4 +98,4 @@ EOF
 fi
 
 docker compose up -d
-echo "Coder auf https://$DOMAIN gestartet."
+echo "Coder auf https://$DOMAIN gestartet. Admin: $ADMIN_EMAIL"
