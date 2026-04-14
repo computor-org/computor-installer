@@ -41,7 +41,7 @@ DOMAIN=""
 EMAIL=""
 ADMIN_PASS="admin123"
 
-while getopts "d:m:p:gch" opt; do
+while getopts "d:m:p:gcbh" opt; do
     case $opt in
         d) DOMAIN="$OPTARG" ;;
         m) EMAIL="$OPTARG" ;;
@@ -119,6 +119,8 @@ if [ "$INSTALL_BACKEND" = true ]; then
     if ./backend-setup.sh -u "api.$DOMAIN" -s "$ADMIN_PASS" -w; then
         STATUS_BACKEND="✅ Erfolgreich "
         ./certify.sh -d "api.$DOMAIN" -m "$EMAIL"
+    else
+        STATUS_BACKEND="❌ Fehlgeschlagen"
     fi
 fi
 
@@ -133,6 +135,7 @@ echo -e "GitLab App:            $STATUS_GITLAB"
 echo -e "GitLab SSL (HTTPS):    $STATUS_GITLAB_SSL"
 echo -e "Coder App:             $STATUS_CODER"
 echo -e "Coder SSL (HTTPS):     $STATUS_CODER_SSL"
+echo -e "Backend:               $STATUS_BACKEND"
 echo -e "${BLUE}==================================================${NC}"
 
 if [[ "$STATUS_GITLAB_SSL" == *"❌"* || "$STATUS_CODER_SSL" == *"❌"* ]]; then
