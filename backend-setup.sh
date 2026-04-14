@@ -14,7 +14,7 @@ NC='\033[0m'
 
 log() { echo -e "${BLUE}[BACKEND]${NC} $1"; }
 
-# Hilfsfunktionen
+# Hilfsfunktionen für Passwörter
 gen_pass() { openssl rand -base64 48 | tr -d '+/=' | head -c 24; }
 gen_hex()  { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 32; }
@@ -27,11 +27,6 @@ while getopts "u:m:wg" opt; do
   esac
 done
 
-if [[ -z "$DOMAIN" || -z "$ADMIN_EMAIL" ]]; then
-    echo "Fehler: Domain (-u) und Email (-m) erforderlich!"
-    exit 1
-fi
-
 # 1. Repo klonen
 if ! command -v git &> /dev/null; then apt-get update && apt-get install -y git; fi
 if [ ! -d "$BACKEND_DIR" ]; then
@@ -43,8 +38,7 @@ cd "$BACKEND_DIR"
 cp "$TEMPLATE_PATH" .env
 update_env() { sed -i "s|^$1=.*|$1=$2|g" .env; }
 
-log "Konfiguriere Passwörter und Secrets..."
-# (Hier alle update_env Aufrufe wie zuvor...)
+log "Konfiguriere .env..."
 update_env "POSTGRES_PASSWORD" "$(gen_pass)"
 update_env "API_ADMIN_PASSWORD" "$(gen_pass)"
 update_env "TOKEN_SECRET" "$(gen_base64)"
@@ -55,27 +49,28 @@ update_env "CODER_URL" "https://$(echo $DOMAIN | sed 's/api\./coder\./')"
 update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
 
 # ==========================================================================
-# 3. DER FIX: DOCKER-COMPOSE & DOCKERFILES REINIGEN
+# 3. DER FIX: DATEIEN IM OPS-ORDNER PATCHEN (BEVOR STARTUP.SH LÄUFT)
 # ==========================================================================
-log "Bereinige Docker-Konfiguration für Debian 13..."
+log "Bereine YAML-Dateien in ops/docker/ für Debian 13..."
 
-# Schritt A: Entferne den fehlerhaften MATLAB-Dienst komplett aus der YAML
-# Wir löschen den Block von 'temporal-worker-matlab:' bis zum nächsten Service
-sed -i '/temporal-worker-matlab:/,/^[[:space:]]*[a-zA-Z0-9_-]*:$/{/^[[:space:]]*[a-zA-Z0-9_-]*:$/!d}' docker-compose.yml
-# (Zusatz-Fix falls die Formatierung leicht anders ist)
-sed -i '/temporal-worker-matlab:/,+15d' docker-compose.yml 2>/dev/null || true
+# Schritt A: MATLAB-Dienst aus den Docker-Compose Dateien entfernen
+# Wir suchen in allen YAML-Dateien im ops-Ordner nach dem matlab-worker und löschen den Block
+find ops/docker/ -name "*.yaml" -type f -exec sed -i '/temporal-worker-matlab:/,+15d' {} +
+log "✓ MATLAB-Dienste aus YAML-Dateien entfernt."
 
-# Schritt B: Alle Python 3.10 Referenzen durch Standard-Python 3 ersetzen
-# Debian 13 hat kein 3.10 Paket, aber 3.11/3.12 (als "python3")
-log "Patsche Python-Versionen in Dockerfiles..."
+# Schritt B: Dockerfiles patchen (Python 3.10 -> Python 3)
+# Da Debian 13 kein python3.10 hat, müssen wir die Dockerfiles im Repo anpassen
+log "Patsche Dockerfiles von python3.10 auf python3..."
 find . -name "Dockerfile*" -type f -exec sed -i 's/python3\.10/python3/g' {} +
 find . -name "Dockerfile*" -type f -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} +
 find . -name "Dockerfile*" -type f -exec sed -i 's/python3\.10-venv/python3-venv/g' {} +
+log "✓ Python-Versionen in Dockerfiles angepasst."
 
 # ==========================================================================
 
-# 4. Nginx Proxy (wie zuvor)
+# 4. Nginx Proxy (wie gehabt)
 if [ "$CONFIGURE_NGINX" = true ]; then
+  log "Konfiguriere Nginx..."
   cat <<EOF > /etc/nginx/sites-available/backend.conf
 server {
     listen 80; listen [::]:80;
@@ -95,9 +90,9 @@ EOF
   systemctl restart nginx
 fi
 
-# 5. Starten
-log "Starte Build..."
+# 5. Starten (jetzt wird startup.sh die modifizierten YAMLs finden)
+log "Starte Build & Deploy via startup.sh..."
 chmod +x startup.sh
-./startup.sh prod --build
+./startup.sh prod --build -d
 
-success "Backend erfolgreich gestartet!"
+echo -e "\n${GREEN}Backend erfolgreich auf Debian 13 gestartet!${NC}"
