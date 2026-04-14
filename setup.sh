@@ -48,6 +48,7 @@ while getopts "d:m:p:gch" opt; do
         p) ADMIN_PASS="$OPTARG" ;;
         g) INSTALL_GITLAB=true ;;
         c) INSTALL_CODER=true ;;
+        b) INSTALL_BACKEND=true ;;
         h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c]"; exit 0 ;;
     esac
 done
@@ -64,6 +65,7 @@ cd "$INSTALL_BASE_DIR"
 fetch_script "certify.sh"
 fetch_script "gitlab-setup.sh"
 fetch_script "coder-setup.sh"
+fetch_script "backend-setup.sh"
 
 # 2. System-Vorbereitung
 log "Bereite System vor (Docker & Nginx)..."
@@ -83,7 +85,7 @@ fi
 # 3. GitLab
 if [ "$INSTALL_GITLAB" = true ]; then
     log "Installiere GitLab..."
-    if ./gitlab-setup.sh -u "git.$DOMAIN" -p 8080 -s "$ADMIN_PASS" -w; then
+    if ./gitlab-setup.sh -u "git.$DOMAIN" -p 9080 -s "$ADMIN_PASS" -w; then
         STATUS_GITLAB="✅ Erfolgreich"
         log "Starte SSL-Zertifizierung für GitLab..."
         if ./certify.sh -d "git.$DOMAIN" -m "$EMAIL"; then
@@ -109,6 +111,14 @@ if [ "$INSTALL_CODER" = true ]; then
         fi
     else
         STATUS_CODER="❌ Fehlgeschlagen"
+    fi
+fi
+
+if [ "$INSTALL_BACKEND" = true ]; then
+    log "Installiere Computor Backend..."
+    if ./backend-setup.sh -u "api.$DOMAIN" -s "$ADMIN_PASS" -w; then
+        STATUS_BACKEND="✅ Erfolgreich "
+        ./certify.sh -d "api.$DOMAIN" -m "$EMAIL"
     fi
 fi
 
