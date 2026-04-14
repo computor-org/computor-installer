@@ -9,12 +9,10 @@ CONFIGURE_NGINX=false
 
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
 NC='\033[0m'
 
 log() { echo -e "${BLUE}[BACKEND]${NC} $1"; }
 
-# Hilfsfunktionen für Passwörter
 gen_pass() { openssl rand -base64 48 | tr -d '+/=' | head -c 24; }
 gen_hex()  { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 32; }
@@ -34,7 +32,7 @@ if [ ! -d "$BACKEND_DIR" ]; then
 fi
 cd "$BACKEND_DIR"
 
-# 2. .env erstellen & konfigurieren
+# 2. .env erstellen
 cp "$TEMPLATE_PATH" .env
 update_env() { sed -i "s|^$1=.*|$1=$2|g" .env; }
 
@@ -47,28 +45,70 @@ update_env "API_URL" "https://${DOMAIN}"
 update_env "NEXT_PUBLIC_API_URL" "https://${DOMAIN}"
 update_env "CODER_URL" "https://$(echo $DOMAIN | sed 's/api\./coder\./')"
 update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
+update_env "SYSTEM_DEPLOYMENT_PATH" "/opt/computor"
+update_env "API_ROOT_PATH" "/opt/computor/shared"
+mkdir -p /opt/computor/shared
 
 # ==========================================================================
-# 3. DER FIX: DATEIEN IM OPS-ORDNER PATCHEN (BEVOR STARTUP.SH LÄUFT)
+# 3. SICHERER FIX FÜR DEBIAN 13 (MATLAB-ENTFERNUNG)
 # ==========================================================================
-log "Bereine YAML-Dateien in ops/docker/ für Debian 13..."
+log "Bereinige YAML-Dateien in ops/docker/ (Sichere Methode)..."
 
-# Schritt A: MATLAB-Dienst aus den Docker-Compose Dateien entfernen
-# Wir suchen in allen YAML-Dateien im ops-Ordner nach dem matlab-worker und löschen den Block
-find ops/docker/ -name "*.yaml" -type f -exec sed -i '/temporal-worker-matlab:/,+15d' {} +
-log "✓ MATLAB-Dienste aus YAML-Dateien entfernt."
+# Wir nutzen Python, um den MATLAB-Block sauber zu entfernen
+# Dies verhindert das Verschieben von 'depends_on' Keys
+python3 - <<EOF
+import os
 
-# Schritt B: Dockerfiles patchen (Python 3.10 -> Python 3)
-# Da Debian 13 kein python3.10 hat, müssen wir die Dockerfiles im Repo anpassen
+def clean_yaml(filepath):
+    if not os.path.exists(filepath): return
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+
+    new_lines = []
+    skip = False
+    indent = 0
+
+    for line in lines:
+        stripped = line.lstrip()
+        if not stripped: # Leerzeile
+            new_lines.append(line)
+            continue
+
+        current_indent = len(line) - len(stripped)
+
+        # Start des zu löschenden Blocks finden
+        if "temporal-worker-matlab:" in line:
+            skip = True
+            indent = current_indent
+            continue
+
+        # Ende des Blocks finden (wenn Einrückung wieder kleiner/gleich ist)
+        if skip:
+            if current_indent <= indent and stripped:
+                skip = False
+            else:
+                continue
+
+        new_lines.append(line)
+
+    with open(filepath, 'w') as f:
+        f.writelines(new_lines)
+
+# Wende die Reinigung auf alle Compose-Files an
+for root, dirs, files in os.walk("ops/docker"):
+    for file in files:
+        if file.endswith(".yaml") or file.endswith(".yml"):
+            clean_yaml(os.path.join(root, file))
+EOF
+
 log "Patsche Dockerfiles von python3.10 auf python3..."
 find . -name "Dockerfile*" -type f -exec sed -i 's/python3\.10/python3/g' {} +
 find . -name "Dockerfile*" -type f -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} +
-find . -name "Dockerfile*" -type f -exec sed -i 's/python3\.10-venv/python3-venv/g' {} +
-log "✓ Python-Versionen in Dockerfiles angepasst."
+log "✓ System für Debian 13 vorbereitet."
 
 # ==========================================================================
 
-# 4. Nginx Proxy (wie gehabt)
+# 4. Nginx Proxy
 if [ "$CONFIGURE_NGINX" = true ]; then
   log "Konfiguriere Nginx..."
   cat <<EOF > /etc/nginx/sites-available/backend.conf
@@ -90,9 +130,9 @@ EOF
   systemctl restart nginx
 fi
 
-# 5. Starten (jetzt wird startup.sh die modifizierten YAMLs finden)
+# 5. Starten
 log "Starte Build & Deploy via startup.sh..."
 chmod +x startup.sh
 ./startup.sh prod --build -d
 
-echo -e "\n${GREEN}Backend erfolgreich auf Debian 13 gestartet!${NC}"
+log "Backend erfolgreich gestartet!"
