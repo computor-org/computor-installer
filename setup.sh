@@ -1,9 +1,7 @@
 #!/bin/bash
 # ==========================================================================
-# Computor Backend Master Setup Script (mit Status-Report)
+# Computor Backend Master Setup Script (Final Version)
 # ==========================================================================
-
-# Wir entfernen set -e, damit das Skript bei Fehlern nicht sofort stoppt!
 
 GITHUB_ORG="computor-org"
 SERVER_REPO="computor-installer"
@@ -20,14 +18,15 @@ NC='\033[0m'
 
 log() { echo -e "${BLUE}[INFO]${NC} $1"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; } # exit 1 entfernt
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Status-Variablen (Default: Übersprungen)
+# Status-Variablen Initialisierung
 STATUS_PREP="⏩ Übersprungen"
 STATUS_GITLAB="⏩ Übersprungen"
 STATUS_GITLAB_SSL="⏩ Übersprungen"
 STATUS_CODER="⏩ Übersprungen"
 STATUS_CODER_SSL="⏩ Übersprungen"
+STATUS_BACKEND="⏩ Übersprungen"
 
 fetch_script() {
     local script_name=$1
@@ -49,7 +48,7 @@ while getopts "d:m:p:gcbh" opt; do
         g) INSTALL_GITLAB=true ;;
         c) INSTALL_CODER=true ;;
         b) INSTALL_BACKEND=true ;;
-        h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c]"; exit 0 ;;
+        h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c] [-b]"; exit 0 ;;
     esac
 done
 
@@ -67,22 +66,20 @@ fetch_script "gitlab-setup.sh"
 fetch_script "coder-setup.sh"
 fetch_script "backend-setup.sh"
 
-# 2. System-Vorbereitung
-log "Bereite System vor (Docker & Nginx)..."
-if apt-get update && apt-get install -y curl nginx; then
+log "Bereite System vor (Docker, Nginx & Git)..."
+if apt-get update && apt-get install -y curl nginx git; then
     # Docker Check/Install
     if ! command -v docker &> /dev/null; then
         curl -fsSL https://get.docker.com | sh && STATUS_PREP="✅ Erfolgreich" || STATUS_PREP="❌ Docker Fehler"
     else
         STATUS_PREP="✅ Erfolgreich (bereits installiert)"
     fi
-    # Nginx Default Seite entfernen (verhindert oft SSL Fehler)
     rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx || true
 else
     STATUS_PREP="❌ System-Update fehlgeschlagen"
 fi
 
-# 3. GitLab
+# 3. GitLab (Port 9080)
 if [ "$INSTALL_GITLAB" = true ]; then
     log "Installiere GitLab..."
     if ./gitlab-setup.sh -u "git.$DOMAIN" -p 9080 -s "$ADMIN_PASS" -w; then
@@ -91,7 +88,7 @@ if [ "$INSTALL_GITLAB" = true ]; then
         if ./certify.sh -d "git.$DOMAIN" -m "$EMAIL"; then
             STATUS_GITLAB_SSL="✅ Erfolgreich"
         else
-            STATUS_GITLAB_SSL="❌ Fehlgeschlagen (DNS/IPv6 prüfen!)"
+            STATUS_GITLAB_SSL="❌ Fehlgeschlagen"
         fi
     else
         STATUS_GITLAB="❌ Fehlgeschlagen"
@@ -107,17 +104,20 @@ if [ "$INSTALL_CODER" = true ]; then
         if ./certify.sh -d "coder.$DOMAIN" -m "$EMAIL"; then
             STATUS_CODER_SSL="✅ Erfolgreich"
         else
-            STATUS_CODER_SSL="❌ Fehlgeschlagen (DNS/IPv6 prüfen!)"
+            STATUS_CODER_SSL="❌ Fehlgeschlagen"
         fi
     else
         STATUS_CODER="❌ Fehlgeschlagen"
     fi
 fi
 
+# 5. Backend (Angepasst auf neue Logik)
 if [ "$INSTALL_BACKEND" = true ]; then
     log "Installiere Computor Backend..."
-    if ./backend-setup.sh -u "api.$DOMAIN" -s "$ADMIN_PASS" -w; then
-        STATUS_BACKEND="✅ Erfolgreich "
+    # HINWEIS: Das Backend-Skript generiert nun eigene Passwörter,
+    # braucht aber die Email (-m) für den Admin-Account.
+    if ./backend-setup.sh -u "api.$DOMAIN" -m "$EMAIL" -w; then
+        STATUS_BACKEND="✅ Erfolgreich"
         ./certify.sh -d "api.$DOMAIN" -m "$EMAIL"
     else
         STATUS_BACKEND="❌ Fehlgeschlagen"
@@ -138,9 +138,8 @@ echo -e "Coder SSL (HTTPS):     $STATUS_CODER_SSL"
 echo -e "Backend:               $STATUS_BACKEND"
 echo -e "${BLUE}==================================================${NC}"
 
-if [[ "$STATUS_GITLAB_SSL" == *"❌"* || "$STATUS_CODER_SSL" == *"❌"* ]]; then
-    echo -e "${RED}HINWEIS:${NC} SSL-Fehler liegen meist an IPv6 (AAAA-Records) im DNS."
-    echo -e "Bitte AAAA-Records löschen und ./certify.sh manuell starten."
+if [[ "$STATUS_GITLAB_SSL" == *"❌"* || "$STATUS_CODER_SSL" == *"❌"* || "$STATUS_BACKEND" == *"❌"* ]]; then
+    echo -e "${RED}HINWEIS:${NC} Falls SSL fehlgeschlagen ist, prüfe DNS/IPv6."
 fi
 
 success "Skript-Durchlauf beendet!"
