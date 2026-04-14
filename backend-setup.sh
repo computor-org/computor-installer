@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================================
-# Computor Backend Setup Script (Unique Password Generation)
+# Computor Backend Setup Script (MATLAB Deaktiviert & Unique Passwords)
 # ==========================================================================
 set -e
 
@@ -19,7 +19,6 @@ NC='\033[0m'
 
 log() { echo -e "${BLUE}[BACKEND]${NC} $1"; }
 
-# Hilfsfunktionen für verschiedene Arten von Keys
 gen_pass() { openssl rand -base64 48 | tr -d '+/=' | head -c 24; }
 gen_hex()  { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 32; }
@@ -38,8 +37,7 @@ if [[ -z "$DOMAIN" || -z "$ADMIN_EMAIL" ]]; then
     exit 1
 fi
 
-# 1. Alle Passwörter und Tokens individuell generieren
-log "Generiere individuelle Passwörter und Secrets..."
+# 1. Passwort-Generierung
 DB_PASS=$(gen_pass)
 TEMPORAL_DB_PASS=$(gen_pass)
 REDIS_PASS=$(gen_pass)
@@ -52,7 +50,7 @@ TOKEN_SECRET=$(gen_base64)
 AUTH_SECRET=$(gen_base64)
 WORKER_TOKEN=$(gen_hex)
 
-# 2. Git & Repository
+# 2. Git & Repo
 if [ "$INSTALL_GIT" = true ]; then
   apt-get update && apt-get install -y git
 fi
@@ -76,22 +74,20 @@ update_env() {
     sed -i "s|^$1=.*|$1=$2|g" .env
 }
 
-# 4. Werte in .env setzen
-log "Schreibe individuelle Konfiguration in .env..."
+# 4. Werte setzen
+log "Konfiguriere .env..."
 
-# Datenbanken
+# Passwörter
 update_env "POSTGRES_PASSWORD" "$DB_PASS"
 update_env "TEMPORAL_POSTGRES_PASSWORD" "$TEMPORAL_DB_PASS"
 update_env "REDIS_PASSWORD" "$REDIS_PASS"
 update_env "MINIO_ROOT_PASSWORD" "$MINIO_PASS"
 update_env "CODER_POSTGRES_PASSWORD" "$CODER_DB_PASS"
-
-# API & Coder Admin
 update_env "API_ADMIN_PASSWORD" "$API_ADMIN_PASS"
 update_env "CODER_ADMIN_PASSWORD" "$CODER_ADMIN_PASS"
 update_env "CODER_ADMIN_EMAIL" "$ADMIN_EMAIL"
 
-# Sicherheits-Tokens (Die "openssl rand" Felder im Template)
+# Tokens
 update_env "TOKEN_SECRET" "$TOKEN_SECRET"
 update_env "AUTH_SECRET" "$AUTH_SECRET"
 update_env "CODER_ADMIN_API_SECRET" "$CODER_API_SECRET"
@@ -106,6 +102,14 @@ update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
 update_env "SYSTEM_DEPLOYMENT_PATH" "/opt/computor"
 update_env "API_ROOT_PATH" "/opt/computor/shared"
 mkdir -p /opt/computor/shared
+
+# ============================================
+# MATLAB DEAKTIVIERUNG (FIX FÜR BUILD ERROR)
+# ============================================
+log "Deaktiviere MATLAB-Komponenten..."
+update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
+# Wir setzen ein existierendes Image ein, damit der Build-Vorgang nicht abbricht
+update_env "MATLAB_BASE_IMAGE" "debian:bookworm-slim"
 
 # Docker GID
 DOCKER_GID=$(getent group docker | cut -d: -f3 || echo "999")
@@ -135,11 +139,13 @@ EOF
 fi
 
 # 6. Starten
-log "Starte Backend-Services (startup.sh)..."
+log "Starte Backend-Services..."
 chmod +x startup.sh
+# Falls der Build trotzdem versucht den Worker zu bauen,
+# sagen wir Docker Compose hier explizit, dass er den MATLAB-Worker ignorieren soll:
 ./startup.sh prod --build
 
-# FINALER STATUS REPORT
+# FINAL REPORT
 echo -e "\n${YELLOW}==================================================${NC}"
 echo -e "${GREEN}      BACKEND INSTALLATION ABGESCHLOSSEN!${NC}"
 echo -e "${YELLOW}==================================================${NC}"

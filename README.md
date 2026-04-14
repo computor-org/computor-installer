@@ -1,6 +1,6 @@
 # Computor Backend Installer
 
-Dieses Repository enthält eine Suite von Scripten zur automatisierten Einrichtung eines professionellen Entwicklungs-Backends (GitLab, Coder & Computor API) auf einem frischen Debian/Ubuntu-Server.
+Dieses Repository enthält eine Suite von Scripten zur automatisierten Einrichtung eines professionellen Entwicklungs-Backends (GitLab, Coder & Computor Backend) auf einem frischen Debian/Ubuntu-Server.
 
 ## 🚀 Schnellstart (Master Setup)
 
