@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================================
-# Computor Backend Master Setup Script (Final Version)
+# Computor Backend Master Setup Script (mit Skip-SSL Option)
 # ==========================================================================
 
 GITHUB_ORG="computor-org"
@@ -20,13 +20,16 @@ log() { echo -e "${BLUE}[INFO]${NC} $1"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Status-Variablen Initialisierung
+# Status-Variablen
 STATUS_PREP="⏩ Übersprungen"
 STATUS_GITLAB="⏩ Übersprungen"
 STATUS_GITLAB_SSL="⏩ Übersprungen"
 STATUS_CODER="⏩ Übersprungen"
 STATUS_CODER_SSL="⏩ Übersprungen"
 STATUS_BACKEND="⏩ Übersprungen"
+
+# NEU: Variable für SSL-Skip
+SKIP_SSL=false
 
 fetch_script() {
     local script_name=$1
@@ -35,12 +38,8 @@ fetch_script() {
     [ -f "$script_name" ] && chmod +x "$script_name"
 }
 
-# Parameter
-DOMAIN=""
-EMAIL=""
-ADMIN_PASS="admin123"
-
-while getopts "d:m:p:gcbh" opt; do
+# Parameter (JETZT MIT 'n' für No-SSL)
+while getopts "d:m:p:gcbnh" opt; do
     case $opt in
         d) DOMAIN="$OPTARG" ;;
         m) EMAIL="$OPTARG" ;;
@@ -48,7 +47,8 @@ while getopts "d:m:p:gcbh" opt; do
         g) INSTALL_GITLAB=true ;;
         c) INSTALL_CODER=true ;;
         b) INSTALL_BACKEND=true ;;
-        h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c] [-b]"; exit 0 ;;
+        n) SKIP_SSL=true ;; # NEU: SSL überspringen
+        h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c] [-b] [-n]"; exit 0 ;;
     esac
 done
 
@@ -66,9 +66,9 @@ fetch_script "gitlab-setup.sh"
 fetch_script "coder-setup.sh"
 fetch_script "backend-setup.sh"
 
+# 2. System-Vorbereitung
 log "Bereite System vor (Docker, Nginx & Git)..."
 if apt-get update && apt-get install -y curl nginx git; then
-    # Docker Check/Install
     if ! command -v docker &> /dev/null; then
         curl -fsSL https://get.docker.com | sh && STATUS_PREP="✅ Erfolgreich" || STATUS_PREP="❌ Docker Fehler"
     else
@@ -79,16 +79,16 @@ else
     STATUS_PREP="❌ System-Update fehlgeschlagen"
 fi
 
-# 3. GitLab (Port 9080)
+# 3. GitLab
 if [ "$INSTALL_GITLAB" = true ]; then
     log "Installiere GitLab..."
     if ./gitlab-setup.sh -u "git.$DOMAIN" -p 9080 -s "$ADMIN_PASS" -w; then
         STATUS_GITLAB="✅ Erfolgreich"
-        log "Starte SSL-Zertifizierung für GitLab..."
-        if ./certify.sh -d "git.$DOMAIN" -m "$EMAIL"; then
-            STATUS_GITLAB_SSL="✅ Erfolgreich"
+        if [ "$SKIP_SSL" = false ]; then
+            log "Starte SSL-Zertifizierung für GitLab..."
+            ./certify.sh -d "git.$DOMAIN" -m "$EMAIL" && STATUS_GITLAB_SSL="✅ Erfolgreich" || STATUS_GITLAB_SSL="❌ Fehler"
         else
-            STATUS_GITLAB_SSL="❌ Fehlgeschlagen"
+            STATUS_GITLAB_SSL="⏩ Übersprungen (-n)"
         fi
     else
         STATUS_GITLAB="❌ Fehlgeschlagen"
@@ -100,25 +100,25 @@ if [ "$INSTALL_CODER" = true ]; then
     log "Installiere Coder..."
     if ./coder-setup.sh -u "coder.$DOMAIN" -p 7080 -d "$INSTALL_BASE_DIR/coder" -m "$EMAIL" -s "$ADMIN_PASS" -w; then
         STATUS_CODER="✅ Erfolgreich"
-        log "Starte SSL-Zertifizierung für Coder..."
-        if ./certify.sh -d "coder.$DOMAIN" -m "$EMAIL"; then
-            STATUS_CODER_SSL="✅ Erfolgreich"
+        if [ "$SKIP_SSL" = false ]; then
+            log "Starte SSL-Zertifizierung für Coder..."
+            ./certify.sh -d "coder.$DOMAIN" -m "$EMAIL" && STATUS_CODER_SSL="✅ Erfolgreich" || STATUS_CODER_SSL="❌ Fehler"
         else
-            STATUS_CODER_SSL="❌ Fehlgeschlagen"
+            STATUS_CODER_SSL="⏩ Übersprungen (-n)"
         fi
     else
         STATUS_CODER="❌ Fehlgeschlagen"
     fi
 fi
 
-# 5. Backend (Angepasst auf neue Logik)
+# 5. Backend
 if [ "$INSTALL_BACKEND" = true ]; then
     log "Installiere Computor Backend..."
-    # HINWEIS: Das Backend-Skript generiert nun eigene Passwörter,
-    # braucht aber die Email (-m) für den Admin-Account.
     if ./backend-setup.sh -u "api.$DOMAIN" -m "$EMAIL" -w; then
         STATUS_BACKEND="✅ Erfolgreich"
-        ./certify.sh -d "api.$DOMAIN" -m "$EMAIL"
+        if [ "$SKIP_SSL" = false ]; then
+            ./certify.sh -d "api.$DOMAIN" -m "$EMAIL"
+        fi
     else
         STATUS_BACKEND="❌ Fehlgeschlagen"
     fi
@@ -138,8 +138,8 @@ echo -e "Coder SSL (HTTPS):     $STATUS_CODER_SSL"
 echo -e "Backend:               $STATUS_BACKEND"
 echo -e "${BLUE}==================================================${NC}"
 
-if [[ "$STATUS_GITLAB_SSL" == *"❌"* || "$STATUS_CODER_SSL" == *"❌"* || "$STATUS_BACKEND" == *"❌"* ]]; then
-    echo -e "${RED}HINWEIS:${NC} Falls SSL fehlgeschlagen ist, prüfe DNS/IPv6."
+if [ "$SKIP_SSL" = true ]; then
+    echo -e "${YELLOW}HINWEIS:${NC} SSL wurde übersprungen. Zugriff aktuell nur über HTTP möglich."
 fi
 
 success "Skript-Durchlauf beendet!"
