@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================================
-# Computor Backend Master Setup Script (mit Skip-SSL Option)
+# Computor Backend Master Setup Script (Final & Korrigiert)
 # ==========================================================================
 
 GITHUB_ORG="computor-org"
@@ -27,8 +27,9 @@ STATUS_GITLAB_SSL="⏩ Übersprungen"
 STATUS_CODER="⏩ Übersprungen"
 STATUS_CODER_SSL="⏩ Übersprungen"
 STATUS_BACKEND="⏩ Übersprungen"
+STATUS_BACKEND_SSL="⏩ Übersprungen" # NEU
 
-# NEU: Variable für SSL-Skip
+# Variable für SSL-Skip
 SKIP_SSL=false
 
 fetch_script() {
@@ -38,7 +39,7 @@ fetch_script() {
     [ -f "$script_name" ] && chmod +x "$script_name"
 }
 
-# Parameter (JETZT MIT 'n' für No-SSL)
+# Parameter
 while getopts "d:m:p:gcbnh" opt; do
     case $opt in
         d) DOMAIN="$OPTARG" ;;
@@ -47,7 +48,7 @@ while getopts "d:m:p:gcbnh" opt; do
         g) INSTALL_GITLAB=true ;;
         c) INSTALL_CODER=true ;;
         b) INSTALL_BACKEND=true ;;
-        n) SKIP_SSL=true ;; # NEU: SSL überspringen
+        n) SKIP_SSL=true ;;
         h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c] [-b] [-n]"; exit 0 ;;
     esac
 done
@@ -114,10 +115,13 @@ fi
 # 5. Backend
 if [ "$INSTALL_BACKEND" = true ]; then
     log "Installiere Computor Backend..."
-    if ./backend-setup.sh -u "code.$DOMAIN" -m "$EMAIL" -w; then
+    # KORREKTUR: -s hinzugefügt für Master-Passwort und api. Subdomain
+    if ./backend-setup.sh -u "api.$DOMAIN" -m "$EMAIL" -s "$ADMIN_PASS" -w; then
         STATUS_BACKEND="✅ Erfolgreich"
         if [ "$SKIP_SSL" = false ]; then
-            ./certify.sh -d "code.$DOMAIN" -m "$EMAIL"
+            ./certify.sh -d "api.$DOMAIN" -m "$EMAIL" && STATUS_BACKEND_SSL="✅ Erfolgreich" || STATUS_BACKEND_SSL="❌ Fehler"
+        else
+            STATUS_BACKEND_SSL="⏩ Übersprungen (-n)"
         fi
     else
         STATUS_BACKEND="❌ Fehlgeschlagen"
@@ -135,7 +139,8 @@ echo -e "GitLab App:            $STATUS_GITLAB"
 echo -e "GitLab SSL (HTTPS):    $STATUS_GITLAB_SSL"
 echo -e "Coder App:             $STATUS_CODER"
 echo -e "Coder SSL (HTTPS):     $STATUS_CODER_SSL"
-echo -e "Backend:               $STATUS_BACKEND"
+echo -e "Backend App:           $STATUS_BACKEND"
+echo -e "Backend SSL (HTTPS):   $STATUS_BACKEND_SSL"
 echo -e "${BLUE}==================================================${NC}"
 
 if [ "$SKIP_SSL" = true ]; then
