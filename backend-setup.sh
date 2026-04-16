@@ -53,7 +53,7 @@ TOKEN_SECRET=$(gen_base64)
 AUTH_SECRET=$(gen_base64)
 
 update_env() {
-    sed -i "s@^$1=.*@$1=$2@g" .env
+    sed -i "s|^$1=.*|$1=$2|g" .env
 }
 
 log "Schreibe Konfiguration in .env..."
