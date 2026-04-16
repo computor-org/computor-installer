@@ -73,7 +73,9 @@ update_env "NEXT_PUBLIC_API_URL" "https://${DOMAIN}"
 update_env "CODER_URL" "https://$(echo $DOMAIN | sed 's/api\./coder\./')"
 update_env "DOCKER_GID" "$(getent group docker | cut -d: -f3 || echo 999)"
 
-# 4. FIX FÜR DEBIAN 13 (MATLAB & Python)
+log "Bereine Konfiguration und patsche Dockerfiles..."
+
+# Schritt A: MATLAB-Dienst entfernen (wie zuvor)
 python3 -c '
 import os
 def clean(f):
@@ -88,8 +90,17 @@ def clean(f):
 for r, d, fs in os.walk("ops/docker"):
     for f in fs: clean(os.path.join(r, f))
 '
-find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} +
 
+# Schritt B: Python 3.10 -> Python 3 (Debian 13 Fix)
+find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} +
+find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} +
+
+# Schritt C: Coder-CLI Installation fixen (Der neue Teil!)
+# Wir ersetzen das instabile install.sh durch einen direkten Binary-Download (v2.12.0 als Beispiel)
+log "Fixe Coder-CLI Installation in Dockerfiles..."
+find . -name "Dockerfile*" -type f -exec sed -i 's|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g' {} +
+
+log "✓ Dockerfiles für Debian 13 und Coder-CLI vorbereitet."
 # 5. Starten
 chmod +x startup.sh
 ./startup.sh prod --build -d

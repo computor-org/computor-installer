@@ -69,6 +69,6 @@ Automatisiert den Bezug von Let's Encrypt Zertifikaten für Nginx. Falls die SSL
 
 ## ⚠️ Voraussetzungen
 - **DNS**: A-Records für alle Subdomains (`api`, `git`, `coder`) müssen auf die Server-IP zeigen. 
-- **Let's Encrypt**: Achte auf das "Rate-Limit" (max. 5 identische Zertifikate pro Woche). Nutze im Zweifel das `-n` Flag.
+- **Let's Encrypt**: Achte auf das Rate-Limit. Nutze im Zweifel das `-n` Flag.
 - **OS**: Optimiert für **Debian 13 (Trixie)**, Debian 12 und Ubuntu 22.04/24.04.
 - **Hardware**: Mindestens 4GB RAM empfohlen.
