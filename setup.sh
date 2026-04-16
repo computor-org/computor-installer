@@ -114,10 +114,10 @@ fi
 # 5. Backend
 if [ "$INSTALL_BACKEND" = true ]; then
     log "Installiere Computor Backend..."
-    if ./backend-setup.sh -u "api.$DOMAIN" -m "$EMAIL" -w; then
+    if ./backend-setup.sh -u "code.$DOMAIN" -m "$EMAIL" -w; then
         STATUS_BACKEND="✅ Erfolgreich"
         if [ "$SKIP_SSL" = false ]; then
-            ./certify.sh -d "api.$DOMAIN" -m "$EMAIL"
+            ./certify.sh -d "code.$DOMAIN" -m "$EMAIL"
         fi
     else
         STATUS_BACKEND="❌ Fehlgeschlagen"
