@@ -40,11 +40,7 @@ cd "$BACKEND_DIR"
 
 # 2. .env erstellen
 cp "$TEMPLATE_PATH" .env
-
-update_env() {
-    # Wir nutzen '|' als Trenner für Email-Sicherheit
-    sed -i "s|^$1=.*|$1=$2|g" .env
-}
+update_env() { sed -i "s|^$1=.*|$1=$2|g" .env; }
 
 log "Konfiguriere .env..."
 update_env "POSTGRES_PASSWORD" "$(gen_pass)"
@@ -56,48 +52,69 @@ update_env "TOKEN_SECRET" "$(gen_base64)"
 update_env "AUTH_SECRET" "$(gen_base64)"
 update_env "CODER_ADMIN_API_SECRET" "$(gen_hex)"
 update_env "CODER_ENABLED" "true"
-
-# WICHTIG: Interne Docker-URL verwenden, um SSL-Verifikationsfehler zu vermeiden!
 update_env "CODER_URL" "http://computor-coder:7080"
-
 update_env "API_URL" "https://${DOMAIN}"
 update_env "NEXT_PUBLIC_API_URL" "https://${DOMAIN}"
 update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
 update_env "DOCKER_GID" "$(getent group docker | cut -d: -f3 || echo 999)"
 update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
 
-log "Bereine Konfiguration und patsche Dockerfiles..."
+# ==========================================================================
+# 3. FIX FÜR DEBIAN 13 & ROUTING
+# ==========================================================================
+log "Bereine YAML-Konfigurationen und patsche Routing..."
 
-# Schritt A: MATLAB-Dienst sauber aus allen YAMLs entfernen
 python3 -c '
 import os
-def clean(f):
-    if not os.path.exists(f): return
-    with open(f,"r") as r: lines=r.readlines()
-    with open(f,"w") as w:
-        skip=False
-        for l in lines:
-            if "temporal-worker-matlab:" in l: skip=True; continue
-            if skip and l.strip() and not l.startswith("    "): skip=False
-            if not skip: w.write(l)
-for r, d, fs in os.walk("ops/docker"):
-    for f in fs: clean(os.path.join(r, f))
+
+def patch_file(filepath):
+    if not os.path.exists(filepath): return
+    with open(filepath, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    skip = False
+    for line in lines:
+        # A: MATLAB entfernen
+        if "temporal-worker-matlab:" in line:
+            skip = True
+            continue
+        if skip and line.strip() and not line.startswith("    ") and not line.startswith("  "):
+            skip = False
+
+        # B: TRAEFIK PRIORITÄT PATCH (Der Login-Fix)
+        # Wenn wir die uvicorn Sektion finden, fügen wir eine hohe Priorität hinzu
+        if "traefik.http.routers.computor-api" in line and "rule" in line:
+            new_lines.append(line)
+            indent = line[:line.find("traefik")]
+            new_lines.append(f"{indent}traefik.http.routers.computor-api-prod.priority=100\n")
+            new_lines.append(f"{indent}traefik.http.routers.computor-api-dev.priority=100\n")
+            continue
+
+        if not skip:
+            new_lines.append(line)
+
+    with open(filepath, "w") as f:
+        f.writelines(new_lines)
+
+# Alle YAMLs in ops/docker patchen
+for root, dirs, files in os.walk("ops/docker"):
+    for file in files:
+        if file.endswith(".yaml"):
+            patch_file(os.path.join(root, file))
 '
 
-# Schritt B: Python 3.10 -> Python 3 Fix (Debian 13)
-find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} +
-find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} +
+# C: Python 3.10 Fix & Coder CLI Fix
+find . -name "Dockerfile*" -exec sed -i "s/python3\.10/python3/g" {} +
+find . -name "Dockerfile*" -type f -exec sed -i "s|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g" {} +
 
-# Schritt C: Coder-CLI Installation fixen (Binary statt Script)
-find . -name "Dockerfile*" -type f -exec sed -i 's|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g' {} +
+# ==========================================================================
 
-# 4. NGINX KONFIGURATION (Mit Domain-Name für Certbot)
+# 4. NGINX
 if [ "$CONFIGURE_NGINX" = true ]; then
-  log "Erstelle Nginx Konfiguration für $DOMAIN..."
   cat <<EOF > /etc/nginx/sites-available/${DOMAIN}.conf
 server {
-    listen 80;
-    listen [::]:80;
+    listen 80; listen [::]:80;
     server_name ${DOMAIN};
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -106,7 +123,6 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
@@ -119,4 +135,4 @@ fi
 chmod +x startup.sh
 ./startup.sh prod --build -d
 
-log "Backend erfolgreich gestartet!"
+log "Backend mit Routing-Fix gestartet!"

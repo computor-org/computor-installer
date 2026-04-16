@@ -41,10 +41,10 @@ services:
   coder:
     image: ghcr.io/coder/coder:latest
     ports:
-      - "127.0.0.1:${PORT}:7080"
+      - "127.0.0.1:${PORT}:6080"
     environment:
       CODER_PG_CONNECTION_URL: "postgresql://coder:coder_password@database/coder?sslmode=disable"
-      CODER_HTTP_ADDRESS: "0.0.0.0:7080"
+      CODER_HTTP_ADDRESS: "0.0.0.0:6080"
       CODER_ACCESS_URL: "https://${DOMAIN}"
       # HIER WIRD DER ADMIN ERSTELLT (Strings in einfache Anführungszeichen!)
       CODER_FIRST_USER_EMAIL: '${ADMIN_EMAIL}'
