@@ -19,6 +19,7 @@ gen_pass() { openssl rand -base64 48 | tr -d '+/=' | head -c 24; }
 gen_hex()  { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 32; }
 
+# WICHTIG: Kein Doppelpunkt nach 'w', damit es ein einfaches Flag ist
 while getopts "u:m:s:wg" opt; do
   case $opt in
     u) DOMAIN="$OPTARG" ;;
@@ -30,17 +31,18 @@ done
 
 if [ -z "$API_ADMIN_PASS" ]; then API_ADMIN_PASS=$(gen_pass); fi
 
-# 1. Repo klonen
-if ! command -v git &> /dev/null; then apt-get update && apt-get install -y git; fi
-if [ ! -d "$BACKEND_DIR" ]; then
-    log "Klone Repository..."
-    git clone https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
-fi
+# 1. Repository frisch klonen (Tabula Rasa)
+if [ -d "$BACKEND_DIR" ]; then rm -rf "$BACKEND_DIR"; fi
+log "Klone Repository frisch..."
+git clone https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
 cd "$BACKEND_DIR"
 
 # 2. .env erstellen
 cp "$TEMPLATE_PATH" .env
-update_env() { sed -i "s|^$1=.*|$1=$2|g" .env; }
+update_env() {
+    # Wir nutzen | als Trenner, damit Sonderzeichen in Emails (@) oder Secrets nicht stören
+    sed -i "s|^$1=.*|$1=$2|g" .env
+}
 
 log "Konfiguriere .env..."
 update_env "POSTGRES_PASSWORD" "$(gen_pass)"
@@ -58,63 +60,41 @@ update_env "NEXT_PUBLIC_API_URL" "https://${DOMAIN}"
 update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
 update_env "DOCKER_GID" "$(getent group docker | cut -d: -f3 || echo 999)"
 update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
+mkdir -p /opt/computor/shared
 
 # ==========================================================================
-# 3. FIX FÜR DEBIAN 13 & ROUTING
+# 3. DIE ENTSCHEIDENDEN FIXES (ROUTING, DEBIAN 13, CODER)
 # ==========================================================================
-log "Bereine YAML-Konfigurationen und patsche Routing..."
+log "Patsche Konfigurationen für Debian 13 und Routing-Priorität..."
 
-python3 -c '
-import os
+# Schritt A: MATLAB-Dienst entfernen (Verhindert Build-Abbruch)
+find ops/docker/ -name "*.yaml" -exec sed -i '/temporal-worker-matlab:/,+15d' {} +
 
-def patch_file(filepath):
-    if not os.path.exists(filepath): return
-    with open(filepath, "r") as f:
-        lines = f.readlines()
+# Schritt B: Backend-Routing massiv erweitern (Der Login-Fix!)
+# Wir fügen alle Pfade hinzu, die das Backend direkt bedient, damit Traefik sie nicht zum Frontend schickt.
+API_RULE="PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`)"
+sed -i "s|PathPrefix(\`/api\`)|${API_RULE}|g" ops/docker/docker-compose.prod.yaml
 
-    new_lines = []
-    skip = False
-    for line in lines:
-        # A: MATLAB entfernen
-        if "temporal-worker-matlab:" in line:
-            skip = True
-            continue
-        if skip and line.strip() and not line.startswith("    ") and not line.startswith("  "):
-            skip = False
+# Schritt C: Stripprefix Middleware deaktivieren (Verhindert 404-Fehler in FastAPI)
+# Da wir jetzt auch auf /auth etc reagieren, darf das Präfix nicht einfach weggeschnitten werden.
+sed -i 's/uvicorn-stripprefix/# disabled-stripprefix/g' ops/docker/docker-compose.prod.yaml
 
-        # B: TRAEFIK PRIORITÄT PATCH (Der Login-Fix)
-        # Wenn wir die uvicorn Sektion finden, fügen wir eine hohe Priorität hinzu
-        if "traefik.http.routers.computor-api" in line and "rule" in line:
-            new_lines.append(line)
-            indent = line[:line.find("traefik")]
-            new_lines.append(f"{indent}traefik.http.routers.computor-api-prod.priority=100\n")
-            new_lines.append(f"{indent}traefik.http.routers.computor-api-dev.priority=100\n")
-            continue
+# Schritt D: Python 3.10 -> Python 3 Fix (Debian Trixie/13 Support)
+find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} +
+find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} +
 
-        if not skip:
-            new_lines.append(line)
-
-    with open(filepath, "w") as f:
-        f.writelines(new_lines)
-
-# Alle YAMLs in ops/docker patchen
-for root, dirs, files in os.walk("ops/docker"):
-    for file in files:
-        if file.endswith(".yaml"):
-            patch_file(os.path.join(root, file))
-'
-
-# C: Python 3.10 Fix & Coder CLI Fix
-find . -name "Dockerfile*" -exec sed -i "s/python3\.10/python3/g" {} +
-find . -name "Dockerfile*" -type f -exec sed -i "s|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g" {} +
+# Schritt E: Coder-CLI Fix (Nutze Binary statt instabilem install.sh im Docker-Build)
+find . -name "Dockerfile*" -type f -exec sed -i 's|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g' {} +
 
 # ==========================================================================
 
 # 4. NGINX
 if [ "$CONFIGURE_NGINX" = true ]; then
+  log "Erstelle Nginx Konfiguration für $DOMAIN..."
   cat <<EOF > /etc/nginx/sites-available/${DOMAIN}.conf
 server {
-    listen 80; listen [::]:80;
+    listen 80;
+    listen [::]:80;
     server_name ${DOMAIN};
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -123,6 +103,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
@@ -132,7 +113,17 @@ EOF
 fi
 
 # 5. Starten
+log "Starte Build & Deploy via startup.sh..."
 chmod +x startup.sh
 ./startup.sh prod --build -d
 
-log "Backend mit Routing-Fix gestartet!"
+# 6. STATUS REPORT
+echo -e "\n${GREEN}==================================================${NC}"
+echo -e "${GREEN}      ZUGANGSDATEN COMPUTOR BACKEND${NC}"
+echo -e "${GREEN}==================================================${NC}"
+echo -e "Backend URL:   https://$DOMAIN"
+echo -e "Admin User:    admin"
+echo -e "Admin Pass:    ${YELLOW}$API_ADMIN_PASS${NC}"
+echo -e "--------------------------------------------------"
+echo -e "Coder Admin:   $ADMIN_EMAIL"
+echo -e "==================================================${NC}"

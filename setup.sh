@@ -49,7 +49,7 @@ while getopts "d:m:p:gcbnh" opt; do
         c) INSTALL_CODER=true ;;
         b) INSTALL_BACKEND=true ;;
         n) SKIP_SSL=true ;;
-        h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c] [-b] [-n]"; exit 0 ;;
+        h) echo "Usage: setup.sh -d domain.eu -m mail@domain.eu [-p pass] [-g] [-c] [-b] [-n]"; exit 0 ;;
     esac
 done
 
@@ -116,10 +116,10 @@ fi
 if [ "$INSTALL_BACKEND" = true ]; then
     log "Installiere Computor Backend..."
     # KORREKTUR: -s hinzugefügt für Master-Passwort und api. Subdomain
-    if ./backend-setup.sh -u "api.$DOMAIN" -m "$EMAIL" -s "$ADMIN_PASS" -w; then
+    if ./backend-setup.sh -u "temp.$DOMAIN" -m "$EMAIL" -s "$ADMIN_PASS" -w; then
         STATUS_BACKEND="✅ Erfolgreich"
         if [ "$SKIP_SSL" = false ]; then
-            ./certify.sh -d "api.$DOMAIN" -m "$EMAIL" && STATUS_BACKEND_SSL="✅ Erfolgreich" || STATUS_BACKEND_SSL="❌ Fehler"
+            ./certify.sh -d "temp.$DOMAIN" -m "$EMAIL" && STATUS_BACKEND_SSL="✅ Erfolgreich" || STATUS_BACKEND_SSL="❌ Fehler"
         else
             STATUS_BACKEND_SSL="⏩ Übersprungen (-n)"
         fi
