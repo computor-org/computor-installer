@@ -72,12 +72,16 @@ find ops/docker/ -name "*.yaml" -exec sed -i '/temporal-worker-matlab:/,+15d' {}
 
 # Schritt B: Backend-Routing massiv erweitern (Der Login-Fix!)
 # Wir fügen alle Pfade hinzu, die das Backend direkt bedient, damit Traefik sie nicht zum Frontend schickt.
-API_RULE="PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`)"
+# Wir setzen die Regel so, dass wir die API-Pfade spezifizieren.
+API_RULE="PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`) || PathPrefix(\`/service-types\`) || PathPrefix(\`/profiles\`) || PathPrefix(\`/student-profiles\`) || PathPrefix(\`/tutors\`) || PathPrefix(\`/lecturers\`) || PathPrefix(\`/user-roles\`) || PathPrefix(\`/role-claims\`) || PathPrefix(\`/service-accounts\`) || PathPrefix(\`/api-tokens\`) || PathPrefix(\`/tasks\`) || PathPrefix(\`/team-management\`) || PathPrefix(\`/course-member-import\`) || PathPrefix(\`/course-member-gradings\`) || PathPrefix(\`/storage\`) || PathPrefix(\`/examples\`) || PathPrefix(\`/extensions\`) || PathPrefix(\`/submissions\`) || PathPrefix(\`/course-member-comments\`) || PathPrefix(\`/messages\`) || PathPrefix(\`/sessions\`) || PathPrefix(\`/ws\`) || PathPrefix(\`/workspaces\`)"
 sed -i "s|PathPrefix(\`/api\`)|${API_RULE}|g" ops/docker/docker-compose.prod.yaml
 
-# Schritt C: Stripprefix Middleware deaktivieren (Verhindert 404-Fehler in FastAPI)
-# Da wir jetzt auch auf /auth etc reagieren, darf das Präfix nicht einfach weggeschnitten werden.
+# Schritt C: Stripprefix Middleware deaktivieren oder anpassen
+# Da FastAPI die Routen mit vollen Pfaden registriert (z.B. @app.include_router(auth_router, prefix='/auth')),
+# darf Traefik das Präfix nicht entfernen, wenn es Teil des Pfades ist.
+# Wir setzen ein Dummy-Middleware-System, das nichts tut oder korrekt weiterleitet.
 sed -i 's/uvicorn-stripprefix/# disabled-stripprefix/g' ops/docker/docker-compose.prod.yaml
+sed -i 's|traefik.http.routers.uvicorn.middlewares=uvicorn-stripprefix||g' ops/docker/docker-compose.prod.yaml
 
 # Schritt D: Python 3.10 -> Python 3 Fix (Debian Trixie/13 Support)
 find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} +
