@@ -68,7 +68,26 @@ mkdir -p /opt/computor/shared
 log "Patsche Konfigurationen für Debian 13 und Routing-Priorität..."
 
 # Schritt A: MATLAB-Dienst entfernen (Verhindert Build-Abbruch)
-find ops/docker/ -name "*.yaml" -exec sed -i '/temporal-worker-matlab:/,+15d' {} +
+# Wir nutzen Python, um den Block sicher zu entfernen, anstatt mit sed und Zeilenzahlen zu arbeiten.
+python3 - <<EOF
+file_path = 'ops/docker/docker-compose.prod.yaml'
+with open(file_path, 'r') as f:
+    lines = f.readlines()
+
+new_lines = []
+skip = False
+for line in lines:
+    if 'temporal-worker-matlab:' in line:
+        skip = True
+    elif skip and (line.startswith('  ') or line.strip() == ''):
+        continue
+    else:
+        skip = False
+        new_lines.append(line)
+
+with open(file_path, 'w') as f:
+    f.writelines(new_lines)
+EOF
 
 # Schritt B: Backend-Routing massiv erweitern (Der Login-Fix!)
 # Wir fügen alle Pfade hinzu, die das Backend direkt bedient.
