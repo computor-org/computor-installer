@@ -71,17 +71,25 @@ log "Patsche Konfigurationen für Debian 13 und Routing-Priorität..."
 find ops/docker/ -name "*.yaml" -exec sed -i '/temporal-worker-matlab:/,+15d' {} +
 
 # Schritt B: Backend-Routing massiv erweitern (Der Login-Fix!)
-# Wir fügen alle Pfade hinzu, die das Backend direkt bedient, damit Traefik sie nicht zum Frontend schickt.
-# Wir schreiben die komplette Konfiguration direkt in eine temporäre Datei, um Shell/Perl-Probleme zu vermeiden.
+# Wir fügen alle Pfade hinzu, die das Backend direkt bedient.
+# Da sed bei komplexen Pfadregeln oft an Delimitern scheitert, nutzen wir ein kleines Python-Skript zur Konfigurationsanpassung.
 
-TEMP_FILE=$(mktemp)
-cat ops/docker/docker-compose.prod.yaml | sed 's|PathPrefix(\`/api\`)|PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`) || PathPrefix(\`/service-types\`) || PathPrefix(\`/profiles\`) || PathPrefix(\`/student-profiles\`) || PathPrefix(\`/tutors\`) || PathPrefix(\`/lecturers\`) || PathPrefix(\`/user-roles\`) || PathPrefix(\`/role-claims\`) || PathPrefix(\`/service-accounts\`) || PathPrefix(\`/api-tokens\`) || PathPrefix(\`/tasks\`) || PathPrefix(\`/team-management\`) || PathPrefix(\`/course-member-import\`) || PathPrefix(\`/course-member-gradings\`) || PathPrefix(\`/storage\`) || PathPrefix(\`/examples\`) || PathPrefix(\`/extensions\`) || PathPrefix(\`/submissions\`) || PathPrefix(\`/course-member-comments\`) || PathPrefix(\`/messages\`) || PathPrefix(\`/sessions\`) || PathPrefix(\`/ws\`) || PathPrefix(\`/workspaces\`)|g' > "$TEMP_FILE"
-mv "$TEMP_FILE" ops/docker/docker-compose.prod.yaml
+python3 - <<EOF
+import re
+file_path = 'ops/docker/docker-compose.prod.yaml'
+with open(file_path, 'r') as f:
+    content = f.read()
 
-# Schritt C: Stripprefix Middleware deaktivieren oder anpassen
-# Da FastAPI die Routen mit vollen Pfaden registriert (z.B. @app.include_router(auth_router, prefix='/auth')),
-# darf Traefik das Präfix nicht entfernen, wenn es Teil des Pfades ist.
-# Wir setzen ein Dummy-Middleware-System, das nichts tut oder korrekt weiterleitet.
+new_rule = 'PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`) || PathPrefix(\`/service-types\`) || PathPrefix(\`/profiles\`) || PathPrefix(\`/student-profiles\`) || PathPrefix(\`/tutors\`) || PathPrefix(\`/lecturers\`) || PathPrefix(\`/user-roles\`) || PathPrefix(\`/role-claims\`) || PathPrefix(\`/service-accounts\`) || PathPrefix(\`/api-tokens\`) || PathPrefix(\`/tasks\`) || PathPrefix(\`/team-management\`) || PathPrefix(\`/course-member-import\`) || PathPrefix(\`/course-member-gradings\`) || PathPrefix(\`/storage\`) || PathPrefix(\`/examples\`) || PathPrefix(\`/extensions\`) || PathPrefix(\`/submissions\`) || PathPrefix(\`/course-member-comments\`) || PathPrefix(\`/messages\`) || PathPrefix(\`/sessions\`) || PathPrefix(\`/ws\`) || PathPrefix(\`/workspaces\`)'
+
+# Ersetze die alte (kurze) Regel durch die neue Regel
+content = re.sub(r'PathPrefix\(\`/api\`\)', new_rule, content)
+
+with open(file_path, 'w') as f:
+    f.write(content)
+EOF
+
+# Schritt C: Stripprefix Middleware deaktivieren
 sed -i 's/uvicorn-stripprefix/# disabled-stripprefix/g' ops/docker/docker-compose.prod.yaml
 sed -i 's|traefik.http.routers.uvicorn.middlewares=uvicorn-stripprefix||g' ops/docker/docker-compose.prod.yaml
 
