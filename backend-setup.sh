@@ -74,7 +74,9 @@ find ops/docker/ -name "*.yaml" -exec sed -i '/temporal-worker-matlab:/,+15d' {}
 # Wir fügen alle Pfade hinzu, die das Backend direkt bedient, damit Traefik sie nicht zum Frontend schickt.
 # Wir setzen die Regel so, dass wir die API-Pfade spezifizieren.
 API_RULE="PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`) || PathPrefix(\`/service-types\`) || PathPrefix(\`/profiles\`) || PathPrefix(\`/student-profiles\`) || PathPrefix(\`/tutors\`) || PathPrefix(\`/lecturers\`) || PathPrefix(\`/user-roles\`) || PathPrefix(\`/role-claims\`) || PathPrefix(\`/service-accounts\`) || PathPrefix(\`/api-tokens\`) || PathPrefix(\`/tasks\`) || PathPrefix(\`/team-management\`) || PathPrefix(\`/course-member-import\`) || PathPrefix(\`/course-member-gradings\`) || PathPrefix(\`/storage\`) || PathPrefix(\`/examples\`) || PathPrefix(\`/extensions\`) || PathPrefix(\`/submissions\`) || PathPrefix(\`/course-member-comments\`) || PathPrefix(\`/messages\`) || PathPrefix(\`/sessions\`) || PathPrefix(\`/ws\`) || PathPrefix(\`/workspaces\`)"
-sed -i "s|PathPrefix(\`/api\`)|${API_RULE}|g" ops/docker/docker-compose.prod.yaml
+
+# Use perl for more reliable substitution with complex strings instead of sed
+perl -i -pe "s|PathPrefix\(\`/api\`\)|$API_RULE|g" ops/docker/docker-compose.prod.yaml
 
 # Schritt C: Stripprefix Middleware deaktivieren oder anpassen
 # Da FastAPI die Routen mit vollen Pfaden registriert (z.B. @app.include_router(auth_router, prefix='/auth')),
