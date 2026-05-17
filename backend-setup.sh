@@ -19,7 +19,6 @@ gen_pass() { openssl rand -base64 48 | tr -d '+/=' | head -c 24; }
 gen_hex()  { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 32; }
 
-# WICHTIG: Kein Doppelpunkt nach 'w', damit es ein einfaches Flag ist
 while getopts "u:m:s:wg" opt; do
   case $opt in
     u) DOMAIN="$OPTARG" ;;
@@ -88,31 +87,31 @@ EOF
 # Wir fügen alle Pfade hinzu, die das Backend direkt bedient.
 # Da sed bei komplexen Pfadregeln oft an Delimitern scheitert, nutzen wir ein kleines Python-Skript zur Konfigurationsanpassung.
 
-python3 - <<EOF
-import re
-file_path = 'ops/docker/docker-compose.prod.yaml'
-with open(file_path, 'r') as f:
-    content = f.read()
+#python3 - <<EOF
+#import re
+#file_path = 'ops/docker/docker-compose.prod.yaml'
+#with open(file_path, 'r') as f:
+#    content = f.read()
 
-new_rule = 'PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`) || PathPrefix(\`/service-types\`) || PathPrefix(\`/profiles\`) || PathPrefix(\`/student-profiles\`) || PathPrefix(\`/tutors\`) || PathPrefix(\`/lecturers\`) || PathPrefix(\`/user-roles\`) || PathPrefix(\`/role-claims\`) || PathPrefix(\`/service-accounts\`) || PathPrefix(\`/api-tokens\`) || PathPrefix(\`/tasks\`) || PathPrefix(\`/team-management\`) || PathPrefix(\`/course-member-import\`) || PathPrefix(\`/course-member-gradings\`) || PathPrefix(\`/storage\`) || PathPrefix(\`/examples\`) || PathPrefix(\`/extensions\`) || PathPrefix(\`/submissions\`) || PathPrefix(\`/course-member-comments\`) || PathPrefix(\`/messages\`) || PathPrefix(\`/sessions\`) || PathPrefix(\`/ws\`) || PathPrefix(\`/workspaces\`)'
+#new_rule = 'PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`) || PathPrefix(\`/service-types\`) || PathPrefix(\`/profiles\`) || PathPrefix(\`/student-profiles\`) || PathPrefix(\`/tutors\`) || PathPrefix(\`/lecturers\`) || PathPrefix(\`/user-roles\`) || PathPrefix(\`/role-claims\`) || PathPrefix(\`/service-accounts\`) || PathPrefix(\`/api-tokens\`) || PathPrefix(\`/tasks\`) || PathPrefix(\`/team-management\`) || PathPrefix(\`/course-member-import\`) || PathPrefix(\`/course-member-gradings\`) || PathPrefix(\`/storage\`) || PathPrefix(\`/examples\`) || PathPrefix(\`/extensions\`) || PathPrefix(\`/submissions\`) || PathPrefix(\`/course-member-comments\`) || PathPrefix(\`/messages\`) || PathPrefix(\`/sessions\`) || PathPrefix(\`/ws\`) || PathPrefix(\`/workspaces\`)'
 
 # Ersetze die alte (kurze) Regel durch die neue Regel
-content = re.sub(r'PathPrefix\(\`/api\`\)', new_rule, content)
+#content = re.sub(r'PathPrefix\(\`/api\`\)', new_rule, content)
 
-with open(file_path, 'w') as f:
-    f.write(content)
-EOF
+#with open(file_path, 'w') as f:
+#    f.write(content)
+#EOF
 
 # Schritt C: Stripprefix Middleware deaktivieren
-sed -i 's/uvicorn-stripprefix/# disabled-stripprefix/g' ops/docker/docker-compose.prod.yaml
-sed -i 's|traefik.http.routers.uvicorn.middlewares=uvicorn-stripprefix||g' ops/docker/docker-compose.prod.yaml
+#sed -i 's/uvicorn-stripprefix/# disabled-stripprefix/g' ops/docker/docker-compose.prod.yaml
+#sed -i 's|traefik.http.routers.uvicorn.middlewares=uvicorn-stripprefix||g' ops/docker/docker-compose.prod.yaml
 
 # Schritt D: Python 3.10 -> Python 3 Fix (Debian Trixie/13 Support)
 find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} +
 find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} +
 
 # Schritt E: Coder-CLI Fix (Nutze Binary statt instabilem install.sh im Docker-Build)
-find . -name "Dockerfile*" -type f -exec sed -i 's|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g' {} +
+#find . -name "Dockerfile*" -type f -exec sed -i 's|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g' {} +
 
 # ==========================================================================
 
