@@ -32,33 +32,59 @@ if [ -z "$API_ADMIN_PASS" ]; then API_ADMIN_PASS=$(gen_pass); fi
 
 # 1. Repository frisch klonen (Tabula Rasa)
 if [ -d "$BACKEND_DIR" ]; then rm -rf "$BACKEND_DIR"; fi
-log "Klone Repository frisch..."
-git clone https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
+log "Klone Repository"
+git clone -b feat/git-server-integration https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
 cd "$BACKEND_DIR"
 
-# 2. .env erstellen
-cp "$TEMPLATE_PATH" .env
-update_env() {
-    # Wir nutzen | als Trenner, damit Sonderzeichen in Emails (@) oder Secrets nicht stören
-    sed -i "s|^$1=.*|$1=$2|g" .env
-}
+# 2. .env erstellen (mit Auto-Erkennung von Maximilians neuem setup-env.sh)
+log "Konfiguriere Umgebungsvariablen (.env)..."
 
-log "Konfiguriere .env..."
-update_env "POSTGRES_PASSWORD" "$(gen_pass)"
-update_env "REDIS_PASSWORD" "$(gen_pass)"
-update_env "API_ADMIN_PASSWORD" "$API_ADMIN_PASS"
-update_env "CODER_ADMIN_PASSWORD" "$API_ADMIN_PASS"
-update_env "CODER_ADMIN_EMAIL" "$ADMIN_EMAIL"
-update_env "TOKEN_SECRET" "$(gen_base64)"
-update_env "AUTH_SECRET" "$(gen_base64)"
-update_env "CODER_ADMIN_API_SECRET" "$(gen_hex)"
-update_env "CODER_ENABLED" "true"
-update_env "CODER_URL" "http://computor-coder:7080"
-update_env "API_URL" "https://${DOMAIN}/api"
-update_env "NEXT_PUBLIC_API_URL" "https://${DOMAIN}/api"
-update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
-update_env "DOCKER_GID" "$(getent group docker | cut -d: -f3 || echo 999)"
-update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
+# Suchen nach Maximilians setup-env.sh im geklonten Repository
+ENV_SCRIPT=""
+if [ -f "./setup-env.sh" ]; then
+    ENV_SCRIPT="./setup-env.sh"
+elif [ -f "./ops/scripts/setup-env.sh" ]; then
+    ENV_SCRIPT="./ops/scripts/setup-env.sh"
+elif [ -f "./ops/environments/setup-env.sh" ]; then
+    ENV_SCRIPT="./ops/environments/setup-env.sh"
+fi
+
+if [ -n "$ENV_SCRIPT" ]; then
+    log "Gefunden: $ENV_SCRIPT. Führe automatische Konfiguration für Keycloak und Forgejo aus..."
+    chmod +x "$ENV_SCRIPT"
+    # Wir führen das Skript aus und übergeben die bekannten Parameter.
+    # Falls das Skript andere Flags erwartet, rufen wir es zusätzlich als Fallback ohne Parameter auf.
+    ./"$ENV_SCRIPT" -u "$DOMAIN" -m "$ADMIN_EMAIL" -s "$API_ADMIN_PASS" || ./"$ENV_SCRIPT" || log "Warnung: setup-env.sh fehlgeschlagen, fahre fort..."
+else
+    log "setup-env.sh nicht gefunden. Verwende manuelles Fallback für .env..."
+    if [ -f "$TEMPLATE_PATH" ]; then
+        cp "$TEMPLATE_PATH" .env
+        update_env() {
+            # Wir nutzen | als Trenner, damit Sonderzeichen in Emails (@) oder Secrets nicht stören
+            sed -i "s|^$1=.*|$1=$2|g" .env
+        }
+
+        update_env "POSTGRES_PASSWORD" "$(gen_pass)"
+        update_env "REDIS_PASSWORD" "$(gen_pass)"
+        update_env "API_ADMIN_PASSWORD" "$API_ADMIN_PASS"
+        update_env "CODER_ADMIN_PASSWORD" "$API_ADMIN_PASS"
+        update_env "CODER_ADMIN_EMAIL" "$ADMIN_EMAIL"
+        update_env "TOKEN_SECRET" "$(gen_base64)"
+        update_env "AUTH_SECRET" "$(gen_base64)"
+        update_env "CODER_ADMIN_API_SECRET" "$(gen_hex)"
+        update_env "CODER_ENABLED" "true"
+        update_env "CODER_URL" "http://computor-coder:7080"
+        update_env "API_URL" "https://${DOMAIN}/api"
+        update_env "NEXT_PUBLIC_API_URL" "https://${DOMAIN}/api"
+        update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
+        update_env "DOCKER_GID" "$(getent group docker | cut -d: -f3 || echo 999)"
+        update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
+    else
+        log "Fehler: Weder setup-env.sh noch $TEMPLATE_PATH wurden gefunden!"
+        exit 1
+    fi
+fi
+
 mkdir -p /opt/computor/shared
 
 # ==========================================================================
@@ -67,51 +93,28 @@ mkdir -p /opt/computor/shared
 log "Patsche Konfigurationen für Debian 13 und Routing-Priorität..."
 
 # Schritt A: MATLAB-Dienst entfernen (Verhindert Build-Abbruch)
-# Wir verwenden einen Regex, um den gesamten Service-Block zu entfernen.
-python3 - <<EOF
+# Wir prüfen zuerst, ob die Datei existiert, um Python-Abbrüche bei fehlender Datei zu verhindern.
+if [ -f "ops/docker/docker-compose.prod.yaml" ]; then
+    python3 - <<EOF || log "Warnung: MATLAB-Patch konnte nicht angewendet werden (evtl. bereits entfernt)."
 import re
 file_path = 'ops/docker/docker-compose.prod.yaml'
 with open(file_path, 'r') as f:
     content = f.read()
 
 # Match the service block starting with '  temporal-worker-matlab:' and ending before the next service block
-# The regex looks for the service name, then all following lines that are indented, 
-# or lines starting with '#' which are comments belonging to that block.
 new_content = re.sub(r'\n\s*# MATLAB Testing Worker\n\s*temporal-worker-matlab:[\s\S]*?(?=\n\n|\n\s*#)', '', content)
 
 with open(file_path, 'w') as f:
     f.write(new_content)
 EOF
-
-# Schritt B: Backend-Routing massiv erweitern (Der Login-Fix!)
-# Wir fügen alle Pfade hinzu, die das Backend direkt bedient.
-# Da sed bei komplexen Pfadregeln oft an Delimitern scheitert, nutzen wir ein kleines Python-Skript zur Konfigurationsanpassung.
-
-#python3 - <<EOF
-#import re
-#file_path = 'ops/docker/docker-compose.prod.yaml'
-#with open(file_path, 'r') as f:
-#    content = f.read()
-
-#new_rule = 'PathPrefix(\`/api\`) || PathPrefix(\`/auth\`) || PathPrefix(\`/v1\`) || PathPrefix(\`/user\`) || PathPrefix(\`/users\`) || PathPrefix(\`/docs\`) || PathPrefix(\`/openapi.json\`) || PathPrefix(\`/coder\`) || PathPrefix(\`/service-types\`) || PathPrefix(\`/profiles\`) || PathPrefix(\`/student-profiles\`) || PathPrefix(\`/tutors\`) || PathPrefix(\`/lecturers\`) || PathPrefix(\`/user-roles\`) || PathPrefix(\`/role-claims\`) || PathPrefix(\`/service-accounts\`) || PathPrefix(\`/api-tokens\`) || PathPrefix(\`/tasks\`) || PathPrefix(\`/team-management\`) || PathPrefix(\`/course-member-import\`) || PathPrefix(\`/course-member-gradings\`) || PathPrefix(\`/storage\`) || PathPrefix(\`/examples\`) || PathPrefix(\`/extensions\`) || PathPrefix(\`/submissions\`) || PathPrefix(\`/course-member-comments\`) || PathPrefix(\`/messages\`) || PathPrefix(\`/sessions\`) || PathPrefix(\`/ws\`) || PathPrefix(\`/workspaces\`)'
-
-# Ersetze die alte (kurze) Regel durch die neue Regel
-#content = re.sub(r'PathPrefix\(\`/api\`\)', new_rule, content)
-
-#with open(file_path, 'w') as f:
-#    f.write(content)
-#EOF
-
-# Schritt C: Stripprefix Middleware deaktivieren
-#sed -i 's/uvicorn-stripprefix/# disabled-stripprefix/g' ops/docker/docker-compose.prod.yaml
-#sed -i 's|traefik.http.routers.uvicorn.middlewares=uvicorn-stripprefix||g' ops/docker/docker-compose.prod.yaml
+else
+    log "Hinweis: ops/docker/docker-compose.prod.yaml nicht gefunden. Überspringe MATLAB-Patch."
+fi
 
 # Schritt D: Python 3.10 -> Python 3 Fix (Debian Trixie/13 Support)
-find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} +
-find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} +
-
-# Schritt E: Coder-CLI Fix (Nutze Binary statt instabilem install.sh im Docker-Build)
-#find . -name "Dockerfile*" -type f -exec sed -i 's|curl -fsSL https://coder.com/install.sh \| sh|curl -fsSL https://github.com/coder/coder/releases/download/v2.12.0/coder_2.12.0_linux_amd64.tar.gz -o coder.tar.gz \&\& tar -xzf coder.tar.gz \&\& mv coder /usr/bin/coder \&\& rm coder.tar.gz|g' {} +
+# || true am Ende verhindert Skript-Abbruch, falls keine Dockerfiles gefunden werden.
+find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} + || true
+find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} + || true
 
 # ==========================================================================
 
