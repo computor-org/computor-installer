@@ -50,17 +50,55 @@ elif [ -f "./ops/environments/setup-env.sh" ]; then
 fi
 
 if [ -n "$ENV_SCRIPT" ]; then
-    log "Gefunden: $ENV_SCRIPT. Führe automatische Konfiguration für Keycloak und Forgejo aus..."
+    log "Gefunden: $ENV_SCRIPT. Führe automatische Basis-Konfiguration aus..."
     chmod +x "$ENV_SCRIPT"
-    # Wir führen das Skript aus und übergeben die bekannten Parameter.
-    # Falls das Skript andere Flags erwartet, rufen wir es zusätzlich als Fallback ohne Parameter auf.
-    ./"$ENV_SCRIPT" -u "$DOMAIN" -m "$ADMIN_EMAIL" -s "$API_ADMIN_PASS" || ./"$ENV_SCRIPT" || log "Warnung: setup-env.sh fehlgeschlagen, fahre fort..."
+
+    # --auto konfiguriert Defaults ohne Prompts, --force erzwingt das Überschreiben der .env.common
+    # Dies erzeugt alle kryptografischen Schlüssel für Keycloak, Temporal etc.
+    ./"$ENV_SCRIPT" --auto --force
+
+    log "Passe erzeugte .env an Produktion an für Domain: $DOMAIN..."
+    update_env() {
+        # Wir nutzen | als Trenner, damit Sonderzeichen in Emails (@) oder Secrets nicht stören
+        sed -i "s|^$1=.*|$1=$2|g" .env
+    }
+
+    # 2.1. Globale Produktionseinstellungen erzwingen
+    update_env "DEBUG_MODE" "production"
+    update_env "DISABLE_API_DEBUG_INFO" "true"
+    update_env "TEMPORAL_WORKER_REPLICAS" "2"
+    update_env "TESTING_WORKER_REPLICAS" "2"
+    update_env "API_URL" "http://uvicorn:8000"
+    update_env "PUBLIC_DOMAIN" "https://${DOMAIN}"
+    update_env "NEXT_PUBLIC_API_URL" ""
+
+    # 2.2. Keycloak Einstellungen für Produktion
+    update_env "KEYCLOAK_TRAEFIK_ENABLED" "true"
+    update_env "KEYCLOAK_HTTP_RELATIVE_PATH" "/auth"
+    update_env "KEYCLOAK_PUBLIC_URL" ""
+
+    # 2.3. Coder & Backend Pfade
+    update_env "CODER_URL" "http://coder:7080"
+    update_env "BACKEND_EXTERNAL_URL" "http://localhost:8080/api"
+
+    # 2.4. Custom-Zugangsdaten eintragen
+    update_env "API_ADMIN_PASSWORD" "$API_ADMIN_PASS"
+    update_env "KEYCLOAK_ADMIN_PASSWORD" "$API_ADMIN_PASS"
+    update_env "CODER_ADMIN_EMAIL" "$ADMIN_EMAIL"
+
+    # 2.5. Coder und Forgejo (Git Server) aktivieren und konfigurieren
+    update_env "CODER_ENABLED" "true"
+    update_env "GIT_SERVER" "forgejo"
+    update_env "GIT_SERVER_ADMIN_PASSWORD" "$API_ADMIN_PASS"
+    update_env "FORGEJO_TRAEFIK_ENABLED" "true"
+    update_env "FORGEJO_DOMAIN" ""
+    update_env "FORGEJO_ROOT_URL" ""
+
 else
     log "setup-env.sh nicht gefunden. Verwende manuelles Fallback für .env..."
     if [ -f "$TEMPLATE_PATH" ]; then
         cp "$TEMPLATE_PATH" .env
         update_env() {
-            # Wir nutzen | als Trenner, damit Sonderzeichen in Emails (@) oder Secrets nicht stören
             sed -i "s|^$1=.*|$1=$2|g" .env
         }
 
@@ -93,7 +131,6 @@ mkdir -p /opt/computor/shared
 log "Patsche Konfigurationen für Debian 13 und Routing-Priorität..."
 
 # Schritt A: MATLAB-Dienst entfernen (Verhindert Build-Abbruch)
-# Wir prüfen zuerst, ob die Datei existiert, um Python-Abbrüche bei fehlender Datei zu verhindern.
 if [ -f "ops/docker/docker-compose.prod.yaml" ]; then
     python3 - <<EOF || log "Warnung: MATLAB-Patch konnte nicht angewendet werden (evtl. bereits entfernt)."
 import re
@@ -112,7 +149,6 @@ else
 fi
 
 # Schritt D: Python 3.10 -> Python 3 Fix (Debian Trixie/13 Support)
-# || true am Ende verhindert Skript-Abbruch, falls keine Dockerfiles gefunden werden.
 find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} + || true
 find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' {} + || true
 
