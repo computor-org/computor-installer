@@ -85,6 +85,7 @@ if [ -n "$ENV_SCRIPT" ]; then
     update_env "API_ADMIN_PASSWORD" "$API_ADMIN_PASS"
     update_env "KEYCLOAK_ADMIN_PASSWORD" "$API_ADMIN_PASS"
     update_env "CODER_ADMIN_EMAIL" "$ADMIN_EMAIL"
+    update_env "KEYCLOAK_SERVER_URL_INTERNAL" "http://computor-keycloak:8080/auth"
 
     # 2.5. Coder und Forgejo (Git Server) aktivieren und konfigurieren
     update_env "CODER_ENABLED" "true"
