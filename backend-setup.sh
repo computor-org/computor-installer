@@ -33,7 +33,7 @@ if [ -z "$API_ADMIN_PASS" ]; then API_ADMIN_PASS=$(gen_pass); fi
 # 1. Repository frisch klonen (Tabula Rasa)
 if [ -d "$BACKEND_DIR" ]; then rm -rf "$BACKEND_DIR"; fi
 log "Klone Repository"
-git clone -b feat/git-server-integration https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
+git clone -b release/2026.10 https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
 cd "$BACKEND_DIR"
 
 # 2. .env erstellen (mit Auto-Erkennung von Maximilians neuem setup-env.sh)
