@@ -171,7 +171,7 @@ fi
 # 5. Starten
 log "Starte Build & Deploy via startup.sh..."
 chmod +x computor.sh
-./computor.sh prod --build -d
+./computor.sh up prod --build -d
 
 # 6. STATUS REPORT
 echo -e "\n${GREEN}==================================================${NC}"
