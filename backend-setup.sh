@@ -94,6 +94,9 @@ if [ -n "$ENV_SCRIPT" ]; then
     update_env "FORGEJO_TRAEFIK_ENABLED" "true"
     update_env "FORGEJO_DOMAIN" ""
     update_env "FORGEJO_ROOT_URL" ""
+    update_env "MATLAB_ENABLED" "false"
+    update_env "UPDATE_ENABLED" "true"
+
 
 else
     log "setup-env.sh nicht gefunden. Verwende manuelles Fallback für .env..."
@@ -118,6 +121,7 @@ else
         update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
         update_env "DOCKER_GID" "$(getent group docker | cut -d: -f3 || echo 999)"
         update_env "MATLAB_TESTING_WORKER_REPLICAS" "0"
+
     else
         log "Fehler: Weder setup-env.sh noch $TEMPLATE_PATH wurden gefunden!"
         exit 1
@@ -132,22 +136,7 @@ mkdir -p /opt/computor/shared
 log "Patsche Konfigurationen für Debian 13 und Routing-Priorität..."
 
 # Schritt A: MATLAB-Dienst entfernen (Verhindert Build-Abbruch)
-if [ -f "ops/docker/docker-compose.prod.yaml" ]; then
-    python3 - <<EOF || log "Warnung: MATLAB-Patch konnte nicht angewendet werden (evtl. bereits entfernt)."
-import re
-file_path = 'ops/docker/docker-compose.prod.yaml'
-with open(file_path, 'r') as f:
-    content = f.read()
 
-# Match the service block starting with '  temporal-worker-matlab:' and ending before the next service block
-new_content = re.sub(r'\n\s*# MATLAB Testing Worker\n\s*temporal-worker-matlab:[\s\S]*?(?=\n\n|\n\s*#)', '', content)
-
-with open(file_path, 'w') as f:
-    f.write(new_content)
-EOF
-else
-    log "Hinweis: ops/docker/docker-compose.prod.yaml nicht gefunden. Überspringe MATLAB-Patch."
-fi
 
 # Schritt D: Python 3.10 -> Python 3 Fix (Debian Trixie/13 Support)
 find . -name "Dockerfile*" -exec sed -i 's/python3\.10/python3/g' {} + || true
@@ -181,8 +170,8 @@ fi
 
 # 5. Starten
 log "Starte Build & Deploy via startup.sh..."
-chmod +x startup.sh
-./startup.sh prod --build -d
+chmod +x computor.sh
+./computor.sh prod --build -d
 
 # 6. STATUS REPORT
 echo -e "\n${GREEN}==================================================${NC}"
