@@ -95,7 +95,11 @@ if [ -n "$ENV_SCRIPT" ]; then
     update_env "FORGEJO_DOMAIN" ""
     update_env "FORGEJO_ROOT_URL" ""
     update_env "MATLAB_ENABLED" "false"
+
+    # 2.6. Update enabled
     update_env "UPDATE_ENABLED" "true"
+    update_env "SYSTEM_REPO_URL" "https://github.com/computor-org/computor-backend.git"
+    update_env "SYSTEM_REPO_BRANCH" "release/2026.10"
 
 
 else
