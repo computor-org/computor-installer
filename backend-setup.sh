@@ -89,12 +89,16 @@ if [ -n "$ENV_SCRIPT" ]; then
 
     # 2.5. Coder und Forgejo (Git Server) aktivieren und konfigurieren
     update_env "CODER_ENABLED" "true"
+    update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
+    update_env "CODER_POSTGRES_PASSWORD" "$(gen_pass)"
     update_env "GIT_SERVER" "forgejo"
     update_env "GIT_SERVER_ADMIN_PASSWORD" "$API_ADMIN_PASS"
     update_env "FORGEJO_TRAEFIK_ENABLED" "true"
     update_env "FORGEJO_DOMAIN" ""
-    update_env "FORGEJO_ROOT_URL" ""
+    update_env "FORGEJO_ROOT_URL" "https://${DOMAIN}/forgejo"
+    update_env "FORGEJO_DB_PASSWORD" "$(gen_pass)"
     update_env "MATLAB_ENABLED" "false"
+    update_env "UPDATE_GIT_FORCE" "true"
 
     # 2.6. Update enabled
     update_env "UPDATE_ENABLED" "true"
