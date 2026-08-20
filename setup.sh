@@ -116,10 +116,10 @@ fi
 if [ "$INSTALL_BACKEND" = true ]; then
     log "Installiere Computor Backend..."
     # KORREKTUR: -s hinzugefügt für Master-Passwort und api. Subdomain
-    if ./backend-setup.sh -u "temp.$DOMAIN" -m "$EMAIL" -s "$ADMIN_PASS" -w; then
+    if ./backend-setup.sh -u "$DOMAIN" -m "$EMAIL" -s "$ADMIN_PASS" -w; then
         STATUS_BACKEND="✅ Erfolgreich"
         if [ "$SKIP_SSL" = false ]; then
-            ./certify.sh -d "temp.$DOMAIN" -m "$EMAIL" && STATUS_BACKEND_SSL="✅ Erfolgreich" || STATUS_BACKEND_SSL="❌ Fehler"
+            ./certify.sh -d "$DOMAIN" -m "$EMAIL" && STATUS_BACKEND_SSL="✅ Erfolgreich" || STATUS_BACKEND_SSL="❌ Fehler"
         else
             STATUS_BACKEND_SSL="⏩ Übersprungen (-n)"
         fi
