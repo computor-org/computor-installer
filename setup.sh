@@ -82,7 +82,8 @@ if apt-get update && apt-get install -y curl nginx git; then
     else
         STATUS_PREP="✅ Erfolgreich (bereits installiert)"
     fi
-    rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx || true
+    rm -f /etc/nginx/sites-enabled/default
+    systemctl restart nginx || true
 else
     STATUS_PREP="❌ System-Update fehlgeschlagen"
 fi
