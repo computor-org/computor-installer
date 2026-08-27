@@ -55,7 +55,7 @@ sudo ./setup.sh -d example.com -m admin@example.com -b -g -c -n
 Clones the backend repository, creates the `.env` configuration, and generates the required secrets.
 
 ```bash
-./backend-setup.sh -u api.domain.eu -m admin@domain.eu -s 'Password' -w
+./backend-setup.sh -u example.com -m admin@example.com -s 'Password' -w
 ```
 
 - Debian 13 compatibility fixes
@@ -68,7 +68,7 @@ Clones the backend repository, creates the `.env` configuration, and generates t
 Installs Coder with Docker and creates an admin user automatically.
 
 ```bash
-./coder-setup.sh -u coder.domain.eu -m admin@domain.eu -s 'Password' -w
+./coder-setup.sh -u coder.example.com -m admin@example.com -s 'Password' -w
 ```
 
 - Creates a default admin account automatically
@@ -80,7 +80,7 @@ Installs Coder with Docker and creates an admin user automatically.
 Creates a GitLab instance with Docker Compose.
 
 ```bash
-./gitlab-setup.sh -u git.domain.eu -s 'Password' -p 9080 -w
+./gitlab-setup.sh -u git.example.com -s 'Password' -p 9080 -w
 ```
 
 - Uses port `9080` by default
@@ -101,9 +101,9 @@ Requests a Let's Encrypt certificate for a domain and enables automatic HTTP-to-
 
 | Service | Example subdomain | Internal port |
 |---------|-------------------|---------------|
-| GitLab | `git.computor.eu` | `9080` |
-| Coder | `coder.computor.eu` | `7080` |
-| Backend | `api.computor.eu` | `8080` |
+| Backend | `example.com` | `8080` |
+| GitLab | `git.example.com` | `9080` |
+| Coder | `coder.example.com` | `7080` |
 
 - Nginx configurations support IPv4 and IPv6 natively
 - `-n` disables SSL and keeps the setup on port 80 only
