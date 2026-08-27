@@ -23,6 +23,37 @@ variable "docker_socket" {
   type        = string
 }
 
+variable "computor_extension_channel" {
+  type        = string
+  default     = "stable"
+  description = "stable or a preview identifier"
+}
+
+variable "computor_vsix_url" {
+  type        = string
+  default     = ""
+  description = "Short-lived VSIX URL for a preview channel"
+}
+
+variable "computor_vsix_sha256" {
+  type        = string
+  default     = ""
+  description = "SHA-256 digest required for preview VSIX installation"
+}
+
+variable "computor_vsix_token" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Optional bearer token for a private preview artifact"
+}
+
+variable "computor_backend_url" {
+  type        = string
+  default     = ""
+  description = "Backend URL associated with the selected extension channel"
+}
+
 data "coder_provisioner" "me" {}
 data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
@@ -40,8 +71,34 @@ resource "coder_agent" "main" {
     fi
 
     # 2. Code-Server manuell starten
-    # Wir nutzen port 13337 (Standard für Coder) und den speziellen Extension-Ordner aus dem Image
-    code-server --auth none --port 13337 --extensions-dir /opt/code-server/extensions >/tmp/code-server.log 2>&1 &
+    EXTENSIONS_DIR="$HOME/.local/share/code-server/extensions"
+    mkdir -p "$EXTENSIONS_DIR"
+    if [ -d /opt/code-server/extensions ] && [ -z "$(find "$EXTENSIONS_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+      cp -a /opt/code-server/extensions/. "$EXTENSIONS_DIR/" 2>/dev/null || true
+    fi
+
+    # A preview VSIX is fetched into the workspace-owned directory.  The
+    # checksum is mandatory whenever a URL is supplied so a stale or swapped
+    # artifact cannot silently replace the extension.
+    if [ -n "${COMPUTOR_VSIX_URL:-}" ]; then
+      if [ -z "${COMPUTOR_VSIX_SHA256:-}" ]; then
+        echo "COMPUTOR_VSIX_SHA256 is required for preview channel ${COMPUTOR_EXTENSION_CHANNEL:-preview}" >&2
+        exit 1
+      fi
+      VSIX_TMP="$(mktemp --suffix=.vsix)"
+      trap 'rm -f "$VSIX_TMP"' EXIT
+      if [ -n "${COMPUTOR_VSIX_TOKEN:-}" ]; then
+        curl -fsSL --retry 3 -H "Authorization: Bearer ${COMPUTOR_VSIX_TOKEN}" "$COMPUTOR_VSIX_URL" -o "$VSIX_TMP"
+      else
+        curl -fsSL --retry 3 "$COMPUTOR_VSIX_URL" -o "$VSIX_TMP"
+      fi
+      printf '%s  %s\\n' "$COMPUTOR_VSIX_SHA256" "$VSIX_TMP" | sha256sum -c -
+      code-server --extensions-dir "$EXTENSIONS_DIR" --install-extension "$VSIX_TMP" --force
+      rm -f "$VSIX_TMP"
+      trap - EXIT
+    fi
+
+    code-server --auth none --port 13337 --extensions-dir "$EXTENSIONS_DIR" >/tmp/code-server.log 2>&1 &
 
   EOT
 
@@ -50,6 +107,11 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
+    COMPUTOR_EXTENSION_CHANNEL = var.computor_extension_channel
+    COMPUTOR_VSIX_URL          = var.computor_vsix_url
+    COMPUTOR_VSIX_SHA256       = var.computor_vsix_sha256
+    COMPUTOR_VSIX_TOKEN        = var.computor_vsix_token
+    COMPUTOR_BACKEND_URL       = var.computor_backend_url
   }
 
   # ... Metadata Blöcke (CPU, RAM etc.) können hier bleiben ...
