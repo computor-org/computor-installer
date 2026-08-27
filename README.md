@@ -40,7 +40,7 @@ sudo ./setup.sh -d example.com -m admin@example.com -b -g -c -n
 |------|-------------|----------|---------|
 | `-d` | Main server domain | Yes | - |
 | `-m` | Email for SSL and admin accounts | Yes | - |
-| `-p` | Global password for GitLab, Coder and backend | No | `admin123` |
+| `-p` | Global password for GitLab, Coder and backend | Required when installing a service | No default |
 | `-b` | Install Computor Backend (`domain.tld`) on port `8080` | No | Disabled |
 | `-g` | Install GitLab (`git.domain.tld`) on port `9080` | No | Disabled |
 | `-c` | Install Coder (`coder.domain.tld`) on port `7080` | No | Disabled |

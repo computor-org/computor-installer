@@ -8,7 +8,7 @@ PORT="7080"
 ADMIN_EMAIL=""
 ADMIN_PASS=""
 
-while getopts "d:wihu:p:m:s:" opt; do
+while getopts "d:wu:p:m:s:" opt; do
   case $opt in
     d) CODER_DIR="$OPTARG" ;;
     u) DOMAIN="$OPTARG" ;;
@@ -16,6 +16,7 @@ while getopts "d:wihu:p:m:s:" opt; do
     m) ADMIN_EMAIL="$OPTARG" ;;
     s) ADMIN_PASS="$OPTARG" ;;
     w) CONFIGURE_NGINX=true ;;
+    *) exit 2 ;;
   esac
 done
 
@@ -39,7 +40,7 @@ fi
 cat <<EOF > docker-compose.yml
 services:
   coder:
-    image: ghcr.io/coder/coder:latest
+    image: ghcr.io/coder/coder@sha256:e71d75fac8743c1295ab5394a3ec05aeb9849c997fd670c914c27334bb8a7761
     ports:
       - "127.0.0.1:${PORT}:6080"
     environment:
@@ -58,7 +59,7 @@ services:
     depends_on:
       database: { condition: service_healthy }
   database:
-    image: "postgres:17"
+    image: "postgres@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
     environment:
       POSTGRES_USER: coder
       POSTGRES_PASSWORD: coder_password

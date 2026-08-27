@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n setup.sh backend-setup.sh coder-setup.sh gitlab-setup.sh certify.sh
+      - run: shellcheck setup.sh backend-setup.sh coder-setup.sh gitlab-setup.sh certify.sh

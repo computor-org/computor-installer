@@ -9,6 +9,7 @@ while getopts "d:m:h" opt; do
     d) DOMAIN="$OPTARG" ;;
     m) EMAIL="$OPTARG" ;;
     h) echo "Usage: $0 -d domain -m email"; exit 0 ;;
+    *) exit 2 ;;
   esac
 done
 
