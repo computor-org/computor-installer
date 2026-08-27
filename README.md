@@ -20,18 +20,18 @@ chmod +x setup.sh
 
 # Example: install all services with SSL enabled
 # Important: wrap passwords with special characters in single quotes
-sudo ./setup.sh -d example.com -m admin@example.com -p 'My#Password123' -g -c -b
+sudo ./setup.sh -d example.com -m admin@example.com -p 'My#Password123' -b -g -c
 ```
 
 This will configure the services for:
+- Computor Backend: `example.com` or the configured domain
 - GitLab: `git.example.com`
 - Coder: `coder.example.com`
-- Computor Backend: `example.com` or the configured domain
 
 If you want to skip SSL and use HTTP only, add `-n`:
 
 ```bash
-sudo ./setup.sh -d meinserver.at -m admin@meinserver.at -n -g -c -b
+sudo ./setup.sh -d example.com -m admin@example.com -b -g -c -n
 ```
 
 ## Options (`setup.sh`)
@@ -41,9 +41,9 @@ sudo ./setup.sh -d meinserver.at -m admin@meinserver.at -n -g -c -b
 | `-d` | Main server domain | Yes | - |
 | `-m` | Email for SSL and admin accounts | Yes | - |
 | `-p` | Global password for GitLab, Coder and backend | No | `admin123` |
+| `-b` | Install Computor Backend (`domain.tld`) on port `8080` | No | Disabled |
 | `-g` | Install GitLab (`git.domain.tld`) on port `9080` | No | Disabled |
 | `-c` | Install Coder (`coder.domain.tld`) on port `7080` | No | Disabled |
-| `-b` | Install Computor Backend (`domain.tld`) on port `8080` | No | Disabled |
 | `-n` | Skip SSL / Let's Encrypt and use HTTP only | No | `false` |
 
 ---
