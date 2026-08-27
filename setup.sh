@@ -49,7 +49,7 @@ while getopts "d:m:p:gcbnh" opt; do
         c) INSTALL_CODER=true ;;
         b) INSTALL_BACKEND=true ;;
         n) SKIP_SSL=true ;;
-        h) echo "Usage: setup.sh -d domain.eu -m mail@domain.eu [-p pass] [-g] [-c] [-b] [-n]"; exit 0 ;;
+        h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c] [-b] [-n]"; exit 0 ;;
     esac
 done
 

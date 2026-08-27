@@ -36,10 +36,10 @@ log "Klone Repository"
 git clone -b release/2026.10 https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
 cd "$BACKEND_DIR"
 
-# 2. .env erstellen (mit Auto-Erkennung von Maximilians neuem setup-env.sh)
+# 2. .env erstellen
 log "Konfiguriere Umgebungsvariablen (.env)..."
 
-# Suchen nach Maximilians setup-env.sh im geklonten Repository
+# Suchen nach setup-env.sh im geklonten Repository
 ENV_SCRIPT=""
 if [ -f "./setup-env.sh" ]; then
     ENV_SCRIPT="./setup-env.sh"
@@ -91,6 +91,8 @@ if [ -n "$ENV_SCRIPT" ]; then
     update_env "CODER_ENABLED" "true"
     update_env "CODER_WORKSPACE_BASE_URL" "https://${DOMAIN}/coder"
     update_env "CODER_POSTGRES_PASSWORD" "$(gen_pass)"
+    update_env "CODER_ADMIN_PASSWORD" "$API_ADMIN_PASS"
+    update_env "CODER_ADMIN_API_SECRET" "$(gen_base64)"
     update_env "GIT_SERVER" "forgejo"
     update_env "GIT_SERVER_ADMIN_PASSWORD" "$API_ADMIN_PASS"
     update_env "FORGEJO_TRAEFIK_ENABLED" "true"
