@@ -50,6 +50,7 @@ while getopts "d:m:p:gcbnh" opt; do
         b) INSTALL_BACKEND=true ;;
         n) SKIP_SSL=true ;;
         h) echo "Usage: setup.sh -d domain.at -m mail@domain.at [-p pass] [-g] [-c] [-b] [-n]"; exit 0 ;;
+        *) exit 2 ;;
     esac
 done
 
@@ -58,8 +59,13 @@ if [[ -z "$DOMAIN" ]]; then
     exit 1
 fi
 
+if [[ ( "$INSTALL_GITLAB" = true || "$INSTALL_CODER" = true || "$INSTALL_BACKEND" = true ) && -z "$ADMIN_PASS" ]]; then
+    echo -e "${RED}Fehler: Ein starkes Administratorpasswort (-p) ist erforderlich!${NC}"
+    exit 1
+fi
+
 mkdir -p "$INSTALL_BASE_DIR"
-cd "$INSTALL_BASE_DIR"
+cd "$INSTALL_BASE_DIR" || exit 1
 
 # 1. Scripte holen
 fetch_script "certify.sh"
@@ -71,11 +77,13 @@ fetch_script "backend-setup.sh"
 log "Bereite System vor (Docker, Nginx & Git)..."
 if apt-get update && apt-get install -y curl nginx git; then
     if ! command -v docker &> /dev/null; then
-        curl -fsSL https://get.docker.com | sh && STATUS_PREP="✅ Erfolgreich" || STATUS_PREP="❌ Docker Fehler"
+        error "Docker fehlt. Installiere Docker aus einer verifizierten Paketquelle und starte das Skript erneut."
+        exit 1
     else
         STATUS_PREP="✅ Erfolgreich (bereits installiert)"
     fi
-    rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx || true
+    rm -f /etc/nginx/sites-enabled/default
+    systemctl restart nginx || true
 else
     STATUS_PREP="❌ System-Update fehlgeschlagen"
 fi

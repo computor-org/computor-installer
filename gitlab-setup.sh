@@ -16,6 +16,7 @@ while getopts "d:wihu:p:s:" opt; do
     s) PASSWORD="$OPTARG" ;;
     w) CONFIGURE_NGINX=true ;;
     i) INSTALL_DOCKER=true ;;
+    *) exit 2 ;;
   esac
 done
 
@@ -25,8 +26,8 @@ if [ -z "$DOMAIN" ] || [ -z "$PASSWORD" ]; then
 fi
 
 if [ "$INSTALL_DOCKER" = true ]; then
-  apt update && apt install -y curl
-  curl -fsSL https://get.docker.com | sh
+  echo "Install Docker from a verified package source before running this installer."
+  exit 1
 fi
 
 mkdir -p "$GITLAB_DIR"
@@ -35,7 +36,7 @@ cd "$GITLAB_DIR"
 cat <<EOF > docker-compose.yml
 services:
   gitlab:
-    image: gitlab/gitlab-ee:latest
+    image: gitlab/gitlab-ee@sha256:b5167605564d64acf896be614791092d1409ac3f78214a9e4394ebb24a0be1b5
     container_name: gitlab
     restart: always
     hostname: ${DOMAIN}

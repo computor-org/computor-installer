@@ -19,12 +19,13 @@ gen_pass() { openssl rand -base64 48 | tr -d '+/=' | head -c 24; }
 gen_hex()  { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 32; }
 
-while getopts "u:m:s:wg" opt; do
+while getopts "u:m:s:w" opt; do
   case $opt in
     u) DOMAIN="$OPTARG" ;;
     m) ADMIN_EMAIL="$OPTARG" ;;
     s) API_ADMIN_PASS="$OPTARG" ;;
     w) CONFIGURE_NGINX=true ;;
+    *) exit 2 ;;
   esac
 done
 
@@ -33,8 +34,9 @@ if [ -z "$API_ADMIN_PASS" ]; then API_ADMIN_PASS=$(gen_pass); fi
 # 1. Repository frisch klonen (Tabula Rasa)
 if [ -d "$BACKEND_DIR" ]; then rm -rf "$BACKEND_DIR"; fi
 log "Klone Repository"
-git clone -b release/2026.10 https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
+git clone https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
 cd "$BACKEND_DIR"
+git checkout --detach f33aab9c98e6f3232eec64e062f8cc13e5162391
 
 # 2. .env erstellen
 log "Konfiguriere Umgebungsvariablen (.env)..."
@@ -105,7 +107,7 @@ if [ -n "$ENV_SCRIPT" ]; then
     # 2.6. Update enabled
     update_env "UPDATE_ENABLED" "true"
     update_env "SYSTEM_REPO_URL" "https://github.com/computor-org/computor-backend.git"
-    update_env "SYSTEM_REPO_BRANCH" "release/2026.10"
+    update_env "SYSTEM_REPO_BRANCH" "f33aab9c98e6f3232eec64e062f8cc13e5162391"
 
 
 else
@@ -157,7 +159,8 @@ find . -name "Dockerfile*" -exec sed -i 's/libpython3\.10-dev/libpython3-dev/g' 
 # 4. NGINX
 if [ "$CONFIGURE_NGINX" = true ]; then
   log "Erstelle Nginx Konfiguration für $DOMAIN..."
-  cat <<EOF > /etc/nginx/sites-available/${DOMAIN}.conf
+  NGINX_CONFIG="/etc/nginx/sites-available/${DOMAIN}.conf"
+  cat <<EOF > "$NGINX_CONFIG"
 server {
     listen 80;
     listen [::]:80;
@@ -174,7 +177,7 @@ server {
     }
 }
 EOF
-  ln -sf /etc/nginx/sites-available/${DOMAIN}.conf /etc/nginx/sites-enabled/
+  ln -sf "$NGINX_CONFIG" /etc/nginx/sites-enabled/
   nginx -t && systemctl restart nginx
 fi
 
