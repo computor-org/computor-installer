@@ -115,7 +115,6 @@ fi
 # 5. Backend
 if [ "$INSTALL_BACKEND" = true ]; then
     log "Installiere Computor Backend..."
-    # KORREKTUR: -s hinzugefügt für Master-Passwort und api. Subdomain
     if ./backend-setup.sh -u "$DOMAIN" -m "$EMAIL" -s "$ADMIN_PASS" -w; then
         STATUS_BACKEND="✅ Erfolgreich"
         if [ "$SKIP_SSL" = false ]; then

@@ -20,7 +20,7 @@ chmod +x setup.sh
 
 # Example: install all services with SSL enabled
 # Important: wrap passwords with special characters in single quotes
-sudo ./setup.sh -d meinserver.at -m admin@meinserver.at -p 'Mein#Passwort123' -g -c -b
+sudo ./setup.sh -d example.com -m admin@example.com -p 'My#Password123' -g -c -b
 ```
 
 This will configure the services for:
