@@ -36,7 +36,7 @@ if [ -d "$BACKEND_DIR" ]; then rm -rf "$BACKEND_DIR"; fi
 log "Klone Repository"
 git clone https://github.com/computor-org/computor-backend.git "$BACKEND_DIR"
 cd "$BACKEND_DIR"
-git checkout --detach 10759025c097bf2187dd9e6137f3919c3be26838
+git checkout --detach f33aab9c98e6f3232eec64e062f8cc13e5162391
 
 # 2. .env erstellen
 log "Konfiguriere Umgebungsvariablen (.env)..."
@@ -107,7 +107,7 @@ if [ -n "$ENV_SCRIPT" ]; then
     # 2.6. Update enabled
     update_env "UPDATE_ENABLED" "true"
     update_env "SYSTEM_REPO_URL" "https://github.com/computor-org/computor-backend.git"
-    update_env "SYSTEM_REPO_BRANCH" "10759025c097bf2187dd9e6137f3919c3be26838"
+    update_env "SYSTEM_REPO_BRANCH" "f33aab9c98e6f3232eec64e062f8cc13e5162391"
 
 
 else
