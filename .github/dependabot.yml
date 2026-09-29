@@ -1,0 +1,33 @@
+# Dependabot configuration: supply-chain policy.
+#
+# * Version updates wait out a cooldown after upstream release so that a
+#   compromised release is likely caught and yanked before we pick it up.
+# * Security updates are NOT subject to cooldown (GitHub docs: "The cooldown
+#   option is only available for version updates, not security updates").
+# * Base images are digest-pinned and actions are SHA-pinned; Dependabot is
+#   the only path that moves those pins.
+
+version: 2
+updates:
+  # Dockerfile.sh (VSIX builder + code-server runtime image).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    groups:
+      docker-base-images:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]

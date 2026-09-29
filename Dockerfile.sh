@@ -1,7 +1,7 @@
 # =========================
 # 1) Builder: clone & package VSIX
 # =========================
-FROM node:20-bookworm AS vsix-builder
+FROM node:20-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS vsix-builder
 
 ARG EXTENSION_REPO_URL=https://github.com/computor-org/computor-vscode.git
 ARG EXTENSION_REPO_REF=main
@@ -22,7 +22,7 @@ WORKDIR /build/extension
 RUN npm ci \
     && npm run compile --if-present \
     && npm run build --if-present \
-    && npm install -g @vscode/vsce \
+    && npm install -g @vscode/vsce@3.9.2 \
     # --no-dependencies nur nutzen, wenn dependencies gebundelt werden (meistens ok)
     && vsce package --out /tmp/extension.vsix
 
