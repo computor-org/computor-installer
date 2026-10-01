@@ -11,6 +11,10 @@ It can install:
 
 ## 🚀 Quick start
 
+Public reading and user-owned runtimes can be offered independently of hosted
+workspace capacity. See [Public learning](docs/PUBLIC_LEARNING.md) for the main
+release, stable semester deployments and the server-execution admission gate.
+
 Use `setup.sh` to install the full stack in one step.
 
 ```bash
