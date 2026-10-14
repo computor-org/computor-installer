@@ -15,7 +15,7 @@ Record backup, migration, health and rollback evidence for the public rollout.
 Coder is optional for public practice. Learners can execute locally or in their
 own GitHub Codespaces. The course devcontainer pins its base image and Python
 dependencies and installs the Computor extension. Signed-in learners can ask
-Luna from their assignment page when the public tutor is enabled; inference
+Lena from their assignment page when the public tutor is enabled; inference
 runs on the existing restricted service, independent of their code workspace.
 Optional AI extensions may use the learner's external provider key. No model
 runs on the GitHub VM. Hackl/BYOK integration remains a later option.
