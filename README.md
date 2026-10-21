@@ -120,3 +120,7 @@ Requests a Let's Encrypt certificate for a domain and enables automatic HTTP-to-
 - Ubuntu 22.04/24.04 or Debian 12/13
 - Sudo/root access
 - At least 4 GB RAM recommended (8 GB recommended for all services)
+
+## License
+
+Code: MIT (see [LICENSE](LICENSE)). Documentation (`docs/` and Markdown guides): CC BY 4.0 (see [LICENSE-DOCS](LICENSE-DOCS)).
