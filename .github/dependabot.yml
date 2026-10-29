@@ -17,6 +17,10 @@ updates:
     open-pull-requests-limit: 2
     cooldown:
       default-days: 7
+    ignore:
+      # The VSIX builder tracks computor-vscode's CI Node (20); move it to an LTS deliberately, never to an odd non-LTS major.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
     groups:
       docker-base-images:
         patterns: ["*"]
