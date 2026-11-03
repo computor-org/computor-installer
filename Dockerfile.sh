@@ -29,7 +29,7 @@ RUN npm ci \
 # =========================
 # 2) Runtime: code-server
 # =========================
-FROM ghcr.io/coder/code-server@sha256:377b66bec5645510ed52549bb00e648c273edc604d230a3f90fd2b2433afcb97
+FROM ghcr.io/coder/code-server@sha256:b9e8056bb74bd0c4f90284c7559eddeccd38400cfedc28e64c9d3ca50fef1f83
 
 USER root
 
