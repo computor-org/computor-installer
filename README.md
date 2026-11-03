@@ -3,17 +3,21 @@
 This repository contains a small set of scripts to automate the setup of a production-ready development backend stack on a fresh Debian/Ubuntu server.
 
 It can install:
-- GitLab
-- Coder
-- Computor Backend
+- Computor Backend, including its in-system Forgejo git server, Coder workspaces and Keycloak
+- a standalone GitLab
+- a standalone Coder
 - Nginx and TLS via Let's Encrypt
-- Docker if needed
+
+Docker must already be installed; `setup.sh` stops if it is missing.
 
 ## 🚀 Quick start
 
-Public reading and user-owned runtimes can be offered independently of hosted
-workspace capacity. See [Public learning](docs/PUBLIC_LEARNING.md) for the main
-release, stable semester deployments and the server-execution admission gate.
+Public reading and user-owned runtimes (local or GitHub Codespaces) can be
+offered independently of hosted workspace capacity; see the
+[backend public-learning guide](https://github.com/computor-org/computor-backend/blob/main/docs/public-learning.md).
+Before opening registration or server grading, verify on the deployed runtime
+that Coder workspaces and grading workers isolate untrusted code (tenants,
+credentials, network, resource and time limits).
 
 Use `setup.sh` to install the full stack in one step.
 
@@ -28,9 +32,9 @@ sudo ./setup.sh -d example.com -m admin@example.com -p 'My#Password123' -b -g -c
 ```
 
 This will configure the services for:
-- Computor Backend: `example.com` or the configured domain
+- Computor Backend: `example.com` or the configured domain, with Forgejo under `/forgejo`, Coder under `/coder` and Keycloak under `/auth`
 - GitLab: `git.example.com`
-- Coder: `coder.example.com`
+- Coder: `coder.example.com` (separate from the Coder inside the backend stack)
 
 If you want to skip SSL and use HTTP only, add `-n`:
 
@@ -56,7 +60,7 @@ sudo ./setup.sh -d example.com -m admin@example.com -b -g -c -n
 
 ### 1. Computor Backend setup (`backend-setup.sh`)
 
-Clones the backend repository, creates the `.env` configuration, and generates the required secrets.
+Clones the backend repository at a pinned commit, creates the `.env` configuration with the backend's `setup-env.sh`, and starts the stack with `./computor.sh up prod --build -d`.
 
 ```bash
 ./backend-setup.sh -u example.com -m admin@example.com -s 'Password' -w
@@ -87,7 +91,7 @@ Creates a GitLab instance with Docker Compose.
 ./gitlab-setup.sh -u git.example.com -s 'Password' -p 9080 -w
 ```
 
-- Uses port `9080` by default
+- Uses port `8080` by default; `setup.sh` passes `-p 9080`
 - Sets the initial root password automatically
 - Optional Nginx setup via `-w`
 
@@ -121,6 +125,10 @@ Requests a Let's Encrypt certificate for a domain and enables automatic HTTP-to-
 - Sudo/root access
 - At least 4 GB RAM recommended (8 GB recommended for all services)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-Code: MIT (see [LICENSE](LICENSE)). Documentation (`docs/` and Markdown guides): CC BY 4.0 (see [LICENSE-DOCS](LICENSE-DOCS)).
+Code: MIT (see [LICENSE](LICENSE)). Documentation (Markdown guides): CC BY 4.0 (see [LICENSE-DOCS](LICENSE-DOCS)).
